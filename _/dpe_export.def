@@ -1,3 +1,0 @@
-LIBRARY dpe.dll
-EXPORTS
-get_stub @ 1
