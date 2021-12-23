@@ -1,0 +1,16 @@
+---
+:id: 418
+:name: Factorisation triples
+:url: https://projecteuler.net/problem=418
+:content: |+
+  Let <var>n</var> be a positive integer. An integer triple (<var>a</var>, <var>b</var>, <var>c</var>) is called a _factorisation triple_ of <var>n</var> if:
+
+  - 1 ≤ <var>a</var> ≤ <var>b</var> ≤ <var>c</var>
+  - <var>a</var>·<var>b</var>·<var>c</var> = <var>n</var>.
+
+  Define <var>f</var>(<var>n</var>) to be <var>a</var> + <var>b</var> + <var>c</var> for the factorisation triple (<var>a</var>, <var>b</var>, <var>c</var>) of <var>n</var> which minimises <var>c</var> / <var>a</var>. One can show that this triple is unique.
+
+  For example, <var>f</var>(165) = 19, <var>f</var>(100100) = 142 and <var>f</var>(20!) = 4034872.
+
+  Find <var>f</var>(43!).
+

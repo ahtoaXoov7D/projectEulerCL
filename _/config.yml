@@ -1,0 +1,34 @@
+version: 2
+
+aliases:
+  - &install-linguist
+    run:
+      name: Install github-linguist
+      command: |
+        sudo apt-get install cmake
+        gem install github-linguist:7.0.0
+  - &run-linguist
+    run:
+      name: Run github-linguist on repository
+      command: github-linguist
+  - &generate-html-chart
+    run:
+      name: Generate language chart html file
+      command: ./scripts/chart.sh > /tmp/chart.html
+  - &store-artifact
+    store_artifacts:
+      path: /tmp/chart.html
+
+defaults: &defaults
+  docker:
+    - image: circleci/ruby
+
+jobs:
+  build:
+    <<: *defaults
+    steps:
+      - checkout
+      - <<: *install-linguist
+      - <<: *run-linguist
+      - <<: *generate-html-chart
+      - <<: *store-artifact

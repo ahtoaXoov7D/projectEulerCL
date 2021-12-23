@@ -1,0 +1,453 @@
+
+* WHAT IS THIS
+  This is a listing of the languages from ~etc/langs.txt~. I've ranked
+  them based on my personal abilities in each. Please do not read this
+  chart as any sort of preference chart or any sort of metric for
+  judging the quality of a language. This is purely based on my
+  /personal/ skills and abilities in a given language and is intended
+  for my use in determining what language to use next.
+* LANGUAGES
+** PLATINUM
+*** C
+*** C++
+*** Coffeescript
+*** GML                                                                :used:
+*** Haskell
+*** Java
+*** Javascript
+*** Mathematica
+*** Perl
+*** Python
+*** Ruby
+*** Rust                                                               :used:
+*** Scala
+*** Tcl                                                                :used:
+*** Typescript
+** GOLD
+*** C#
+*** Ceylon
+*** D                                                                  :used:
+*** Elixir                                                             :used:
+*** Elm
+*** Erlang
+*** GDScript
+*** Go                                                                 :used:
+*** Julia                                                              :used:
+*** Kotlin
+*** Lua
+*** OCaml                                                              :used:
+*** Pizza
+** SILVER
+*** Ada                                                                :used:
+*** ALGOL 68                                                           :used:
+*** AWK                                                                :used:
+*** COBOL                                                              :used:
+*** Dylan                                                              :used:
+*** Eiffel                                                             :used:
+*** F#
+*** Factor                                                             :used:
+*** Fennel                                                             :used:
+*** Forth                                                              :used:
+*** Fortran                                                            :used:
+*** Frege
+*** Gleam                                                              :used:
+*** Haxe
+*** Icon                                                               :used:
+*** Io                                                                 :used:
+*** Ioke                                                               :used:
+*** Lunar (https://github.com/lunarlang/lunar)
+*** Maple
+*** MATLAB
+*** Modula
+*** Modula-2
+*** MoonScript
+*** Nemerle                                                            :used:
+*** Nim                                                                :used:
+*** Oberon-07                                                          :used:
+*** Objective-C                                                        :used:
+*** Pascal                                                             :used:
+*** PHP
+*** R
+*** Raku (Perl 6)
+*** Self
+*** Smalltalk                                                          :used:
+*** SML                                                                :used:
+*** Squeak
+*** Swift
+*** zkl                                                                :used:
+** BRONZE
+*** Agda                                                               :used:
+*** APL                                                                :used:
+*** AutoHotkey                                                         :used:
+    + 64-bit integers (no bignums)
+    + Windows only
+*** bc                                                                 :used:
+*** BeanShell                                                          :used:
+*** Cat
+    + No arrays
+*** 🆒                                                                 :used:
+*** Dafny                                                              :used:
+*** Dip
+*** Dogescript                                                         :used:
+*** 𝔼𝕊𝕄𝕚𝕟                                                              :used:
+*** F*
+*** GAP
+*** Genie                                                              :used:
+*** Glava                                                              :used:
+*** i (https://github.com/Qlova/ilang)                                 :used:
+*** IntercalScript                                                     :used:
+    + No Bignums
+*** J                                                                  :used:
+*** Javagony                                                           :used:
+*** Joy                                                                :used:
+*** Kitten                                                             :used:
+    + 64-bit integers (no bignums)
+*** K
+    + No bignums
+*** λProlog
+*** LaTeX                                                              :used:
+*** Leafscript
+    + No arrays
+    + Doubles only (no bigints)
+*** LilyPond                                                           :used:
+*** m4                                                                 :used:
+*** Make                                                               :used:
+*** Nit                                                                :used:
+*** Picat                                                              :used:
+*** Pike                                                               :used:
+*** Pikelet
+    + No IO
+*** Pony                                                               :used:
+*** Potassco                                                           :used:
+*** Prolog                                                             :used:
+*** PROMAL
+*** Roy                                                                :used:
+*** Scratch                                                            :used:
+*** sed                                                                :used:
+*** SNOBOL                                                             :used:
+*** Streem
+*** SuperCollider                                                      :used:
+*** Vala                                                               :used:
+*** Vale (https://vale.dev/)
+*** Vimscript
+*** Wenyan                                                             :used:
+*** Wren                                                               :used:
+*** Wyvern                                                             :used:
+*** XSLT                                                               :used:
+** ASSEMBLY
+*** CIL                                                                :used:
+*** Jasmin                                                             :used:
+*** LLVM IR                                                            :used:
+*** MASM                                                               :used:
+*** NASM                                                               :used:
+*** Parrot IR                                                          :used:
+*** PASM                                                               :used:
+*** WASM
+** SHELL
+*** Bash
+*** Batch                                                              :used:
+*** Csh                                                                :used:
+*** Dash
+*** Fish
+*** Jsish
+*** Oilshell
+*** Scsh
+*** Zsh                                                                :used:
+** BASIC
+*** Chipmunk BASIC
+*** Commodore BASIC
+*** JustBASIC                                                          :used:
+*** Microsoft SmallBasic
+*** QBASIC                                                             :used:
+*** Quite BASIC
+*** TI BASIC
+*** VBA                                                                :used:
+*** Visual Basic .NET                                                  :used:
+*** XC=BASIC
+** LISP
+*** AutoLISP
+*** Bel (http://www.paulgraham.com/bel.html)
+*** Carp
+*** Clojure
+*** ClojureScript
+*** Common Lisp
+*** ELisp                                                              :used:
+*** Kernel (Klisp)
+*** LFE (Lisp Flavored Erlang)
+*** Maclisp
+*** NewLISP
+*** Racket
+*** Scheme
+** ESOTERIC
+*** *><>                                                               :used:
+*** ///                                                                :used:
+*** 05AB1E                                                             :used:
+*** 1.1                                                                :used:
+*** ><>                                                                :used:
+*** Alice (m-ender)                                                    :used:
+*** Anti-Array                                                         :used:
+*** Aya                                                                :used:
+*** Beeswax                                                            :used:
+*** Befalse                                                            :used:
+*** Befreak                                                            :used:
+    + No arrays
+    + 32-bit integers
+*** Befunge                                                            :used:
+*** Befunk                                                             :used:
+*** Brainf**k                                                          :used:
+*** Brat                                                               :used:
+*** Chef                                                               :used:
+*** CJam                                                               :used:
+*** COMPLEX                                                            :used:
+*** Cubix                                                              :used:
+*** ed
+    + Loops are recursive
+*** Emoji                                                              :used:
+*** Emotinomicon
+    + Short list
+*** Enchilada                                                          :used:
+*** Factorio                                                           :used:
+*** FALSE                                                              :used:
+*** FiM++                                                              :used:
+*** Fourier                                                            :used:
+*** Funciton                                                           :used:
+*** Gibberish                                                          :used:
+*** Golfscript                                                         :used:
+*** Grocery List                                                       :used:
+*** Gwion                                                              :used:
+*** Hanabi                                                             :used:
+*** Hexagony                                                           :used:
+*** Inform 7
+*** Japt
+    + Loops are recursion
+*** Javagrid
+*** Jelly                                                              :used:
+*** Jellyfish
+*** JSF**k                                                             :used:
+*** Keg
+*** Labyrinth                                                          :used:
+*** MagiStack                                                          :used:
+*** Math++                                                             :used:
+*** MATL                                                               :used:
+*** MontiLang                                                          :used:
+*** Mouse-2002                                                         :used:
+*** naz (https://github.com/sporeball/naz)
+*** Noether
+*** Orthagonal
+*** Perchance                                                          :used:
+*** Pickle (Python)
+    + Yes, the serialization framework; I think it's Turing complete
+    + Loops are recursive
+*** Piet                                                               :used:
+*** Pip                                                                :used:
+*** Puzzlescript
+*** Pyth                                                               :used:
+*** Quark (https://github.com/henrystanley/Quark/)
+*** Retina
+*** Rockstar
+*** Secretary
+*** Seriously                                                          :used:
+*** Shakespeare                                                        :used:
+*** Snowman                                                            :used:
+*** Stuck                                                              :used:
+*** Taxi                                                               :used:
+*** Tome                                                               :used:
+*** Tovie (https://github.com/Jaysmito101/tovie)                       :used:
+*** TRANSCRIPT
+*** Underload
+    + Short list
+*** V                                                                  :used:
+*** Whitespace                                                         :used:
+** UNUSABLE
+*** ActionScript
+    Flash is end-of-life and all of the other Adobe products seem to
+    either be paid or not support my OS. I also can't seem to get the
+    [[https://github.com/Corsaair/as3shebang][open-source version]] to run at all.
+*** ALF
+    The [[https://www.informatik.uni-kiel.de/~mh/systems/ALF/][available implementation]] is 25 years old and, despite my best
+    efforts, I cannot get its ~a.out~ format executables to run on my
+    machine.
+*** Arn (ZippyMagician)
+    Looks neat, but either the documentation is wrong or the
+    implementation is hilariously buggy. I can't get anything more
+    than basic arithmetic to run in the downloadable implementation.
+    With no functions or loops, and no way to do any conditionals more
+    advanced than ~||~ and ~&&~, I don't see this one happening.
+*** ASP
+    So I misunderstood. ASP is a way of embedding VBScript (which is,
+    for our purposes, basically Visual Basic). And ASP.net embeds C#,
+    Visual Basic, and Visual J#. The former two are already on my list
+    separately, and the final one seems to basically just be Java on a
+    different platform, so this is not an independent language for our
+    purposes.
+*** Basis
+    The [[https://esolangs.org/wiki/Basis#Reference_implementation_.28WIP.29][only implementation]] is incomplete and does not have enough
+    features to perform any sort of nontrivial computation.
+*** chomksi (pep)
+    I can find no further records of this language's existence.
+*** Clasp.py
+    Is this actually a language or just a library...?
+*** Conedy
+    See Trajedy.
+*** EcstasyLang
+    May be worth looking at at some point in the future. The
+    instructions to get the thing running don't seem to be in working
+    order. The language itself seems to have substantial work put into
+    it.
+*** Emoticon
+    The only interpreter I could find is a Wayback Machine archive
+    from ancient times which tries to run a PHP server that doesn't
+    exist. The source code for this server is unavailable, to the best
+    of my searching ability.
+*** Enterprise
+    Could not run due to language-imposed restrictions.
+*** GridScript
+    [[https://esolangs.org/wiki/GridScript][Unimplemented]]
+*** Inca
+    Unimplemented
+*** INTERCAL
+    No.
+*** minaac
+    The interpreter seems to be using lots of implementation-defined
+    C++ behavior and, as a result, I can only use a small subset of
+    the defined commands without segfaulting at random.
+*** Orthogonal
+    Sadly, the only [[http://www.muppetlabs.com/~breadbox/orth/][working interpreter]] I can find was written for a
+    compiler from 25 years ago.
+*** Piet++
+    [[https://esolangs.org/wiki/Piet%252B%252B][Unimplemented :(]]
+*** Quark (https://github.com/quark-lang/quark)
+    Looks like a neat project, but the interpreter is irreparably
+    broken. ~true~ and ~false~ evaluate to the same value, subtraction
+    unconditionally yields NaN when called inside a function but works
+    correctly at top-level, etc., etc.
+*** Rio
+    Can't find it again.
+*** Skastic
+    Looks like a /super/ cool idea, but it's woefully incomplete to
+    the point of possibly not even being Turing complete.
+*** Trajedy
+    Beautiful language, but... no.
+*** Unlambda
+    Possibly too minimal?
+** UNCLASSIFIED
+*** Alice
+*** Alloy
+*** Ark
+*** ArkScript
+*** AssemblyScript
+*** ATS
+*** Bizubee
+*** BQN (https://mlochbaum.github.io/BQN/)
+*** Brachylog
+*** Bracmat (https://github.com/BartJongejan/Bracmat)
+*** Burlesque (https://esolangs.org/wiki/Burlesque)
+*** CandleScript
+*** Catln (https://catln.dev/)
+*** Cecil
+*** Clean
+*** Coconut
+*** Container (https://github.com/odddollar/Container-lang)
+*** Crystal
+*** Curl (https://www.curl.com/products/prod/language/)
+*** Delphi
+*** Dhall (https://dhall-lang.org/#)
+*** E
+*** Ė (https://e-dot.io/)
+*** EGL
+*** Euler
+*** Fancy
+*** Fission
+*** Fuzzy Octo Guacamole (https://codereview.stackexchange.com/questions/124736/fuzzy-octo-guacamole-interpreter)
+*** G-- (https://github.com/ReyAnthony/G--)
+*** Gluon
+*** Groovy
+*** Husk
+*** jq (https://stedolan.github.io/jq/)
+*** Kobalt (https://github.com/abel0b/kobalt)
+*** Koi (https://koi-lang.dev/)
+*** Lava
+*** Lean (https://leanprover-community.github.io/)
+*** Livescript
+*** Logtalk
+*** Luna
+*** Lunar (http://users.rcn.com/david-moon/Lunar/)
+*** Magpie
+*** Monte
+*** Oasis
+*** Ohm
+*** Orc
+*** Orion (https://github.com/wafelack/orion/)
+*** Oxide (https://github.com/tuqqu/oxide-lang)
+*** Oz
+*** Paperscript
+*** Pikt
+*** Postscript
+*** PPL
+*** Processing (https://en.wikipedia.org/wiki/Processing_(programming_language))
+*** Rebol
+*** Red (https://www.red-lang.org/)
+*** Runic Enchantments (https://github.com/Draco18s/RunicEnchantments/tree/Console)
+*** Simula
+*** Skip
+*** Snails
+*** SNUSP
+*** Squirrel
+*** Strema (https://gilmi.gitlab.io/strema/)
+*** Sweet.js
+*** Teascript
+*** TurtleArt (https://help.sugarlabs.org/en/turtleart_tutorials/programming_without_words.html)
+*** Unicon
+*** VALE (https://github.com/project-everest/vale)
+*** Verilog
+*** Vyxal (https://github.com/Vyxal/Vyxal)
+*** Whispers (https://github.com/cairdcoinheringaahing/Whispers)
+*** XQuery
+*** XY
+* RESOURCES
+** LISTS OF LANGUAGES
+  Here are several online resources that I've found to be useful for finding various languages.
+
+  + Esolang
+    - https://esolangs.org/wiki/Main_Page
+  + What programming languages have been created by PPCG users? - Code
+    Golf Meta Stack Exchange
+    - https://codegolf.meta.stackexchange.com/questions/6918/what-programming-languages-have-been-created-by-ppcg-users
+  + Wikipedia Lists of Programming Languages
+    - https://en.wikipedia.org/wiki/Lists_of_programming_languages
+  + Github Linguist ~languages.yml~
+    - https://github.com/github/linguist/blob/master/lib/linguist/languages.yml
+  + 99-bottles-of-beer.net (Archived)
+    - https://web.archive.org/web/20180222023404/http://99-bottles-of-beer.net/abc.html
+  + List of languages that compile to JS
+    - https://github.com/jashkenas/coffeescript/wiki/List-of-languages-that-compile-to-JS
+  + Hello world/Text - Rosetta Code
+    - https://rosettacode.org/wiki/Hello_world/Text
+  + Showcase of Languages - Code Golf Stack Exchange
+    - https://codegolf.stackexchange.com/questions/44680/showcase-of-languages
+** ONLINE INTERPRETERS
+   Some online interpreters that are free to use and very handy for tasks like this.
+
+   + TIO.run
+     - https://tio.run/
+   + Tutorialspoint Codingground
+     - https://www.tutorialspoint.com/codingground.htm
+   + repl.it
+     - https://repl.it/
+   + IDEOne
+     - https://ideone.com/
+* SHORT LIST
+  These are languages that I've either attempted to use several times
+  and failed, or that I know (due to the specification or rules of the
+  language) that they will only be usable for an incredibly easy
+  challenge.
+*** Emotinomicon
+    The interpreter's primary stack shuffle command is broken. I
+    believe we can horribly inefficiently store arbitrary data in the
+    code space, but that restricts us to 16-bit integers.
+*** Underload
+    A very minimalist language. We can very inefficiently add,
+    multiply, and take exponents, and we have rudimentary cons cells.
+    Negative numbers are not supported, and anything vaguely
+    complicated is not happening. Integer only, and linear analog
+    representations at that.

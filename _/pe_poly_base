@@ -1,0 +1,2021 @@
+#ifndef PE_POLY_BASE_
+#define PE_POLY_BASE_
+
+#include "pe_base"
+#include "pe_int128"
+#include "pe_mod"
+#include "pe_type_traits"
+#include "pe_nt"
+
+#include "pe_poly_base_common"
+
+// Each of the following included files contains a third party polynomial
+// operation function implementations. It is NOT necessary that each file should
+// implement every function.
+#include "pe_poly_base_flint"
+#include "pe_poly_base_ntl"
+#include "pe_poly_base_min_25"
+#include "pe_poly_base_libbf"
+
+// This file is the pe library's polynomial operation implementation.
+//
+// This file will decide whether to use third party library implementations.
+
+// Polynomial multiplication
+//
+// It has different polynomial multiplication implementations.
+//
+// Naming conventions:
+//   [implementation namespace ::]PolyMul[implementation suffix][scalability
+// suffix]
+//
+//   implementation namespace is one of:
+//     ntt32 (32 bit internal mod)
+//     ntt64 (64 bit internal mod)
+//     poly_min25
+//     poly_libbf
+//     poly_flint
+//     poly_ntl
+//
+//   implementation suffix:
+//     Dc: divide and conquer
+//
+//   scalability suffix:
+//     SmallMod: mod is a small
+//     LargeMod: mod is a large
+//     Small: (mod-1)^2*n is relative small
+//     Large: (mod-1)^2*n is relative large
+//     Prime: mod is a prime
+//     NMod: mod is not necessary to be a prime
+//
+// Template parameters:
+//   T: native integer which can be promoted to uint64
+//
+// Availabilities:
+// PolyMulDc                 : always available
+// ntt32::PolyMulSmall       : always available
+// ntt32::PolyMulLarge       : always available
+// ntt64::PolyMulSmall       : always available
+// ntt64::PolyMulLarge       : always available
+// poly_min25::PolyMulSmall  : requires int128
+// poly_min25::PolyMulLarge  : requires int128
+// poly_libbf::PolyMul       : enable libbf && LIMB_BITS >= 64
+// poly_flint::PolyMulPrime  : enable flint && GMP_LIMB_BITS >= 64
+// poly_flint::PolyMulNMod   : enable flint && GMP_LIMB_BITS >= 64
+// poly_ntl::PolyMulSmallMod : enable ntl
+// poly_ntl::PolyMulLargeMod : enable ntl
+// poly_ntl::PolyMul         : enable ntl
+//
+// ntt32::PolyMul      = ntt32::PolyMulLarge
+// ntt64::PolyMul      = ntt64::PolyMulLarge
+// poly_min25::PolyMul = poly_min25::PolyMulLarge
+// poly_flint::PolyMul = poly_flint::PolyMulNMod
+// poly_ntl::PolyMul   = if mod is small then poly_ntl::PolyMulSmallMod
+//                       else poly_ntl::PolyMulLargeMod
+//
+// PolyMul will choose an implementation from the aboves.
+//
+// Constraints:
+// mod < 2^62 in all implementation.
+//
+// ntt32::PolyMulSmall
+// (mod-1)^2*n < 4593671624212873217                              4.5e18
+//
+// ntt32::PolyMulLarge
+// (mod-1)^2*n < 14797252050511790781119856641                    1.4e28
+//
+// ntt64::PolyMulSmall
+// (mod-1)^2*n < 1945555039024054273                              1.9e18
+//
+// ntt64::PolyMulLarge
+// (mod-1)^2*n < 350480037951100867051507526341230593             3.5e35
+//
+// poly_min25::PolyMulSmall
+// (mod-1)^2*n < 1128298388379402241                              1.1e18
+//
+// poly_min25::PolyMulLarge
+// (mod-1)^2*n < 1265198875113262859862934516672757761            1.2e36
+//
+// poly_libbf::PolyMul
+// (mod-1)^2*n < 340282366920938463463374607431768211456 (2^128)  3.4e38
+//
+// poly_flint::PolyMulPrime
+// mod is a word size prime
+//
+// poly_flint::PolyMulNMod
+// mod is a word size number
+//
+// poly_ntl::PolyMulSmallMod
+// mod < 2^30 if sizeof(long) = 4
+// mod < 2^50 if sizeof(long) = 8
+//
+// poly_ntl::PolyMulLargeMod
+// no constraints
+
+namespace pe {
+namespace ntt_base {
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    NttTrans(T* data, const int64 n) {
+  int64 j = n >> 1;
+  for (int64 i = 1; i < n - 1; ++i) {
+    if (i < j) std::swap(data[i], data[j]);
+    int64 k = n >> 1;
+    while (j >= k) {
+      j -= k;
+      k >>= 1;
+    }
+    if (j < k) j += k;
+  }
+}
+}  // namespace ntt_base
+
+// mod is 32 bit
+namespace ntt32 {
+#define HAS_POLY_MUL_NTT32 1
+
+struct NttMod32 {
+  // mod = r * 2 ^ k + 1
+  // mod is prime
+  const unsigned mod;
+  const unsigned r;
+  const int k;
+  const unsigned g;
+
+  unsigned omg[32];
+  mutable unsigned* pre_omg[32];
+
+  NttMod32(unsigned mod, unsigned r, int k, unsigned g)
+      : mod(mod), r(r), k(k), g(g) {
+    for (int i = 0; i <= k; ++i) {
+      omg[i] = static_cast<unsigned>(
+          PowerMod<uint64, uint64, uint64>(g, (mod - 1) >> i, mod));
+    }
+    std::fill(pre_omg, pre_omg + 32, nullptr);
+  }
+
+  ~NttMod32() {
+    for (int i = 0; i <= k; ++i) {
+      if (pre_omg[i] != nullptr) {
+        delete[] pre_omg[i];
+        pre_omg[i] = nullptr;
+      }
+    }
+  }
+
+  void InitPreOmg(int K) const {
+    PE_ASSERT(K <= k);
+    for (int i = 0; i <= K; ++i) {
+      if (pre_omg[i] != nullptr) {
+        continue;
+      }
+      const int64 cnt = 1LL << i;
+      pre_omg[i] = new unsigned[cnt];
+      auto* target = pre_omg[i];
+      const uint64 m = omg[i];
+      unsigned last = 1;
+      target[0] = 1;
+      for (int64 i = 1; i < cnt; ++i) {
+        last = last * m % mod;
+        target[i] = last;
+      }
+    }
+  }
+};
+
+static const NttMod32 ntt_mod_1(2013265921ULL, 15ULL, 27, 31ULL);
+static const NttMod32 ntt_mod_2(2281701377ULL, 17ULL, 27, 3ULL);
+static const NttMod32 ntt_mod_3(3221225473ULL, 3ULL, 30, 5ULL);
+
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    Ntt(T* data, const int64 n, const NttMod32& moder, bool inv = false) {
+  ntt_base::NttTrans(data, n);
+
+  const auto mod = moder.mod;
+  int id = 0;
+  for (int64 h = 2; h <= n; h <<= 1) {
+    const auto* pre_omg = moder.pre_omg[++id];
+    if (pre_omg) {
+#if ENABLE_OPENMP
+#pragma omp parallel for schedule(dynamic, 16) if (n / h > 100000)
+#endif
+      for (int64 j = 0; j < n; j += h) {
+        const auto* omg = pre_omg;
+        const int64 half_h = h >> 1;
+        const int64 limit = j + half_h;
+        for (int64 k = j; k < limit; ++k) {
+          const auto u = data[k] % mod;
+          const auto t = static_cast<uint64>(*omg++) * data[k + half_h] % mod;
+          data[k] = (u + t) % mod;
+          data[k + half_h] = (u + mod - t) % mod;
+        }
+      }
+    } else {
+#if ENABLE_OPENMP
+#pragma omp parallel for schedule(dynamic, 16) if (n / h > 100000)
+#endif
+      for (int64 j = 0; j < n; j += h) {
+        uint64 omgn = 1;
+        const int64 half_h = h >> 1;
+        const int64 limit = j + half_h;
+        for (int64 k = j; k < limit; ++k) {
+          const auto u = data[k] % mod;
+          const auto t = omgn * data[k + half_h] % mod;
+          data[k] = (u + t) % mod;
+          data[k + half_h] = (u + mod - t) % mod;
+          omgn = omgn * moder.omg[id] % mod;
+        }
+      }
+    }
+  }
+  if (inv) {
+    const int64 half_n = n >> 1;
+    for (int64 i = 1; i < half_n; ++i) std::swap(data[i], data[n - i]);
+    const uint64 c = PowerMod<uint64>(n, mod - 2, mod);
+    for (int64 i = 0; i < n; ++i) data[i] = c * data[i] % mod;
+  }
+}
+
+void InitNtt(int k = 22) {
+  PE_ASSERT(k <= 27 && k >= 0);
+  ntt_mod_1.InitPreOmg(k);
+  ntt_mod_2.InitPreOmg(k);
+  ntt_mod_3.InitPreOmg(k);
+}
+
+// The small version uses two modulus.
+struct NttSmallConstant {
+  static constexpr uint64 M1 = 2013265921;
+  static constexpr uint64 M2 = 2281701377;
+  static constexpr uint64 INV_M1__M2 = 1140850697;
+};
+
+// Multiply two polynomials.
+// Make sure the length of result is at least: n + m - 1
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyMulSmallImpl(const T* X, int64 n, const T* Y, int64 m, T* result,
+                     int64 mod) {
+  static_assert(pe_is_unsigned<T>::value, "T must be unsigned");
+
+  const int64 aligned_size = 1LL << pe_lgll(2 * (n + m - 1) - 1);
+
+  // TODO(baihacker): decide the size automatically.
+  const NttMod32* moder_list[2] = {&ntt_mod_1, &ntt_mod_2};
+  std::vector<uint64> tresult[2];
+#if ENABLE_OPENMP
+#pragma omp parallel for schedule(dynamic, 1) num_threads(2)
+#endif
+  for (int id = 0; id < 2; ++id) {
+    const NttMod32& moder = *moder_list[id];
+    std::vector<uint64> XX(aligned_size);
+    std::vector<uint64> YY(aligned_size);
+    for (int64 i = 0; i < n; ++i) XX[i] = X[i];
+    for (int64 i = n; i < aligned_size; ++i) XX[i] = 0;
+    for (int64 i = 0; i < m; ++i) YY[i] = Y[i];
+    for (int64 i = m; i < aligned_size; ++i) YY[i] = 0;
+#if ENABLE_OPENMP
+#pragma omp parallel sections if (n + m >= 100000)
+#endif
+    {
+#if ENABLE_OPENMP
+#pragma omp section
+#endif
+      Ntt(&XX[0], aligned_size, moder);
+#if ENABLE_OPENMP
+#pragma omp section
+#endif
+      Ntt(&YY[0], aligned_size, moder);
+    }
+    const uint64 mod = moder.mod;
+    for (int64 i = 0; i < aligned_size; ++i) {
+      XX[i] = static_cast<uint64>(XX[i]) * YY[i] % mod;
+    }
+    Ntt(&XX[0], aligned_size, moder, true);
+    tresult[id] = std::move(XX);
+  }
+
+  const int64 result_size = n + m - 1;
+#if ENABLE_OPENMP
+#pragma omp parallel for schedule(dynamic, 100000) if (n + m >= 100000)
+#endif
+  for (int64 i = 0; i < result_size; ++i) {
+    const uint64 a = tresult[0][i];
+    const uint64 b = tresult[1][i];
+    const uint64 x = b >= a ? b - a : b + NttSmallConstant::M2 - a;
+    const uint64 y = x * NttSmallConstant::INV_M1__M2 % NttSmallConstant::M2;
+    const uint64 t = y * NttSmallConstant::M1 + a;
+    result[i] = mod > 0 ? t % mod : t;
+  }
+}
+
+// Multiply two polynomials.
+// The length of result is at least n + m - 1.
+POLY_MUL_IMPL(PolyMulSmall, PolyMulSmallImpl)
+
+#define NTT32_DIRECT_INT128_IMPLEMENTATION 0
+
+struct NttConstant {
+  static constexpr uint64 M1 = 2013265921;
+  static constexpr uint64 M2 = 2281701377;
+  static constexpr uint64 M3 = 3221225473;
+#if PE_HAS_INT128 && NTT32_DIRECT_INT128_IMPLEMENTATION
+  static constexpr uint64 M12 = M1 * M2;
+  static constexpr uint64 M13 = M1 * M3;
+  static constexpr uint64 M23 = M2 * M3;
+  static constexpr uint64 IM12 = 2300875347;
+  static constexpr uint64 IM13 = 1792765347;
+  static constexpr uint64 IM23 = 1006632973;
+
+  static constexpr uint128 M13M = (uint128)IM13 * M13;
+  static constexpr uint128 M23M = (uint128)IM23 * M23;
+  static constexpr uint128 M12M = (uint128)IM12 * M12;
+  static constexpr uint128 MMM = (uint128)M1 * M2 * M3;
+#else
+  static constexpr uint64 INV_M1__M2 = 1140850697;
+
+  static constexpr uint64 M1M2 = M1 * M2;
+  static constexpr uint64 INV_M3__M1M2 = 1312477593879670191ULL;
+#endif
+};
+
+// Multiply two polynomials.
+// Make sure the length of result is at least: n + m - 1
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyMulLargeImpl(const T* X, int64 n, const T* Y, int64 m, T* result,
+                     int64 mod) {
+  static_assert(pe_is_unsigned<T>::value, "T must be unsigned");
+
+  const int64 aligned_size = 1LL << pe_lgll(2 * (n + m - 1) - 1);
+
+  // TODO(baihacker): decide the size automatically.
+  const NttMod32* moder_list[3] = {&ntt_mod_1, &ntt_mod_2, &ntt_mod_3};
+  std::vector<uint64> tresult[3];
+#if ENABLE_OPENMP
+#pragma omp parallel for schedule(dynamic, 1) num_threads(3)
+#endif
+  for (int id = 0; id < 3; ++id) {
+    const NttMod32& moder = *moder_list[id];
+    std::vector<uint64> XX(aligned_size);
+    std::vector<uint64> YY(aligned_size);
+    for (int64 i = 0; i < n; ++i) XX[i] = X[i];
+    for (int64 i = n; i < aligned_size; ++i) XX[i] = 0;
+    for (int64 i = 0; i < m; ++i) YY[i] = Y[i];
+    for (int64 i = m; i < aligned_size; ++i) YY[i] = 0;
+#if ENABLE_OPENMP
+#pragma omp parallel sections if (n + m >= 100000)
+#endif
+    {
+#if ENABLE_OPENMP
+#pragma omp section
+#endif
+      Ntt(&XX[0], aligned_size, moder);
+#if ENABLE_OPENMP
+#pragma omp section
+#endif
+      Ntt(&YY[0], aligned_size, moder);
+    }
+    const uint64 mod = moder.mod;
+    for (int64 i = 0; i < aligned_size; ++i) {
+      XX[i] = static_cast<uint64>(XX[i]) * YY[i] % mod;
+    }
+    Ntt(&XX[0], aligned_size, moder, true);
+    tresult[id] = std::move(XX);
+  }
+
+  const int64 result_size = n + m - 1;
+#if ENABLE_OPENMP
+#pragma omp parallel for schedule(dynamic, 100000) if (n + m >= 100000)
+#endif
+  for (int64 i = 0; i < result_size; ++i) {
+#if PE_HAS_INT128 && NTT32_DIRECT_INT128_IMPLEMENTATION
+    const uint128 a = tresult[0][i] * NttConstant::M23M;
+    const uint128 b = tresult[1][i] * NttConstant::M13M;
+    const uint128 c = tresult[2][i] * NttConstant::M12M;
+    const uint128 t = a + b + c;
+    const auto tmp = t < NttConstant::MMM ? t : t % NttConstant::MMM;
+    result[i] = mod > 0 ? tmp % mod : tmp;
+#else
+    const uint64 a = tresult[0][i];
+    const uint64 b = tresult[1][i];
+    const uint64 c = tresult[2][i];
+    const uint64 x1 = b >= a ? b - a : NttConstant::M2 - a + b;
+    const uint64 y1 = x1 * NttConstant::INV_M1__M2 % NttConstant::M2;
+    const uint64 modab = y1 * NttConstant::M1 + a;
+    const uint64 x2 = modab >= c ? modab - c : NttConstant::M1M2 - c + modab;
+#if PE_HAS_INT128
+    const uint64 y2 = static_cast<uint128>(x2) * NttConstant::INV_M3__M1M2 %
+                      NttConstant::M1M2;
+    const uint128 t = static_cast<uint128>(y2) * NttConstant::M3 + c;
+    result[i] = mod > 0 ? t % mod : t;
+#else
+    PE_ASSERT(mod > 0);
+    const uint64 y2 =
+        MulModEx(x2, NttConstant::INV_M3__M1M2, NttConstant::M1M2);
+    const uint64 t = MulModEx(y2 % mod, NttConstant::M3 % mod, mod);
+    result[i] = AddMod(t, c % mod, mod);
+#endif
+#endif
+  }
+}
+
+// Multiply two polynomials.
+// The length of result is at least n + m - 1.
+POLY_MUL_IMPL(PolyMulLarge, PolyMulLargeImpl)
+}  // namespace ntt32
+
+// mod is 64 bit
+namespace ntt64 {
+#define HAS_POLY_MUL_NTT64 1
+
+struct NttMod64 {
+  // mod = r * 2 ^ k + 1
+  // mod is prime
+  const uint64 mod;
+  const unsigned r;
+  const int k;
+  const unsigned g;
+
+  uint64 omg[64];
+  mutable uint64* pre_omg[64];
+
+  NttMod64(uint64 mod, unsigned r, int k, unsigned g)
+      : mod(mod), r(r), k(k), g(g) {
+    for (int i = 0; i <= k; ++i) {
+      omg[i] = PowerModEx<uint64, uint64, uint64>(g, (mod - 1) >> i, mod);
+    }
+    std::fill(pre_omg, pre_omg + 64, nullptr);
+  }
+
+  ~NttMod64() {
+    for (int i = 0; i <= k; ++i) {
+      if (pre_omg[i] != nullptr) {
+        delete[] pre_omg[i];
+        pre_omg[i] = nullptr;
+      }
+    }
+  }
+
+  void InitPreOmg(int K) const {
+    PE_ASSERT(K <= k);
+    for (int i = 0; i <= K; ++i) {
+      if (pre_omg[i] != nullptr) {
+        continue;
+      }
+      const int64 cnt = 1LL << i;
+      pre_omg[i] = new uint64[cnt];
+      auto* target = pre_omg[i];
+      const uint64 m = omg[i];
+      uint64 last = 1;
+      target[0] = 1;
+      for (int64 i = 1; i < cnt; ++i) {
+#if PE_HAS_INT128
+        last = Mod128And64(static_cast<uint128>(last) * m, mod);
+#else
+        last = MulModEx(last, m, mod);
+#endif
+        target[i] = last;
+      }
+    }
+  }
+};
+
+static const NttMod64 ntt_mod_1(180143985094819841ULL, 5ULL, 55, 6ULL);
+static const NttMod64 ntt_mod_2(1945555039024054273ULL, 27ULL, 56, 5ULL);
+
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    Ntt(T* data, const int64 n, const NttMod64& moder, bool inv = false) {
+  ntt_base::NttTrans(data, n);
+
+  const auto mod = moder.mod;
+  int id = 0;
+  for (int64 h = 2; h <= n; h <<= 1) {
+    const auto* pre_omg = moder.pre_omg[++id];
+    if (pre_omg) {
+#if ENABLE_OPENMP
+#pragma omp parallel for schedule(dynamic, 16) if (n / h > 100000)
+#endif
+      for (int64 j = 0; j < n; j += h) {
+        const auto* omg = pre_omg;
+        const int64 half_h = h >> 1;
+        const int64 limit = j + half_h;
+        for (int64 k = j; k < limit; ++k) {
+          const auto u = data[k] % mod;
+#if PE_HAS_INT128
+          const auto t =
+              Mod128And64(static_cast<uint128>(*omg++) * data[k + half_h], mod);
+#else
+          const auto t = MulModEx(*omg++, data[k + half_h], mod);
+#endif
+          data[k] = (u + t) % mod;
+          data[k + half_h] = (u + mod - t) % mod;
+        }
+      }
+    } else {
+#if ENABLE_OPENMP
+#pragma omp parallel for schedule(dynamic, 16) if (n / h > 100000)
+#endif
+      for (int64 j = 0; j < n; j += h) {
+        uint64 omgn = 1;
+        const int64 half_h = h >> 1;
+        const int64 limit = j + half_h;
+        for (int64 k = j; k < limit; ++k) {
+          const auto u = data[k] % mod;
+#if PE_HAS_INT128
+          const auto t =
+              Mod128And64(static_cast<uint128>(omgn) * data[k + half_h], mod);
+#else
+          const auto t = MulModEx(omgn, data[k + half_h], mod);
+#endif
+          data[k] = (u + t) % mod;
+          data[k + half_h] = (u + mod - t) % mod;
+#if PE_HAS_INT128
+          omgn = Mod128And64(static_cast<uint128>(omgn) * moder.omg[id], mod);
+#else
+          omgn = MulModEx(omgn, moder.omg[id], mod);
+#endif
+        }
+      }
+    }
+  }
+  if (inv) {
+    const int64 half_n = n >> 1;
+    for (int64 i = 1; i < half_n; ++i) std::swap(data[i], data[n - i]);
+    const uint64 c = PowerModEx<uint64>(n, mod - 2, mod);
+    for (int64 i = 0; i < n; ++i) {
+#if PE_HAS_INT128
+      data[i] = Mod128And64(static_cast<uint128>(c) * data[i], mod);
+#else
+      data[i] = MulModEx(c, data[i], mod);
+#endif
+    }
+  }
+}
+
+void InitNtt(int k = 22) {
+  PE_ASSERT(k <= 30 && k >= 0);
+  ntt_mod_1.InitPreOmg(k);
+  ntt_mod_2.InitPreOmg(k);
+}
+
+// Multiply two polynomials.
+// Make sure the length of result is at least: n + m - 1
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyMulSmallImpl(const T* X, int64 n, const T* Y, int64 m, T* result,
+                     int64 mod) {
+  static_assert(pe_is_unsigned<T>::value, "T must be unsigned");
+
+  const int64 aligned_size = 1LL << pe_lgll(2 * (n + m - 1) - 1);
+
+  // TODO(baihacker): decide the size automatically.
+  const NttMod64* moder_list[1] = {&ntt_mod_2};
+  std::vector<uint64> tresult[1];
+  for (int id = 0; id < 1; ++id) {
+    const NttMod64& moder = *moder_list[id];
+    std::vector<uint64> XX(aligned_size);
+    std::vector<uint64> YY(aligned_size);
+    for (int64 i = 0; i < n; ++i) XX[i] = X[i];
+    for (int64 i = n; i < aligned_size; ++i) XX[i] = 0;
+    for (int64 i = 0; i < m; ++i) YY[i] = Y[i];
+    for (int64 i = m; i < aligned_size; ++i) YY[i] = 0;
+#if ENABLE_OPENMP
+#pragma omp parallel sections if (n + m >= 100000)
+#endif
+    {
+#if ENABLE_OPENMP
+#pragma omp section
+#endif
+      Ntt(&XX[0], aligned_size, moder);
+#if ENABLE_OPENMP
+#pragma omp section
+#endif
+      Ntt(&YY[0], aligned_size, moder);
+    }
+    const uint64 mod = moder.mod;
+    for (int64 i = 0; i < aligned_size; ++i) {
+#if PE_HAS_INT128
+      XX[i] = Mod128And64(static_cast<uint128>(XX[i]) * YY[i], mod);
+#else
+      XX[i] = MulModEx(XX[i], YY[i], mod);
+#endif
+    }
+    Ntt(&XX[0], aligned_size, moder, true);
+    tresult[id] = std::move(XX);
+  }
+
+  const int64 result_size = n + m - 1;
+#if ENABLE_OPENMP
+#pragma omp parallel for schedule(dynamic, 100000) if (n + m >= 100000)
+#endif
+  for (int64 i = 0; i < result_size; ++i) {
+    const uint64 a = tresult[0][i];
+    result[i] = mod > 0 ? a % mod : a;
+  }
+}
+
+// Multiply two polynomials.
+// The length of result is at least n + m - 1.
+POLY_MUL_IMPL(PolyMulSmall, PolyMulSmallImpl)
+
+struct NttConstant {
+  static constexpr uint64 M1 = 180143985094819841ULL;
+  static constexpr uint64 M2 = 1945555039024054273ULL;
+  static constexpr uint64 INV_M1__M2 = 714693687804754632ULL;
+};
+
+// Multiply two polynomials.
+// Make sure the length of result is at least: n + m - 1
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyMulLargeImpl(const T* X, int64 n, const T* Y, int64 m, T* result,
+                     int64 mod) {
+  static_assert(pe_is_unsigned<T>::value, "T must be unsigned");
+
+  const int64 aligned_size = 1LL << pe_lgll(2 * (n + m - 1) - 1);
+
+  // TODO(baihacker): decide the size automatically.
+  const NttMod64* moder_list[2] = {&ntt_mod_1, &ntt_mod_2};
+  std::vector<uint64> tresult[2];
+#if ENABLE_OPENMP
+#pragma omp parallel for schedule(dynamic, 1) num_threads(2)
+#endif
+  for (int id = 0; id < 2; ++id) {
+    const NttMod64& moder = *moder_list[id];
+    std::vector<uint64> XX(aligned_size);
+    std::vector<uint64> YY(aligned_size);
+    for (int64 i = 0; i < n; ++i) XX[i] = X[i];
+    for (int64 i = n; i < aligned_size; ++i) XX[i] = 0;
+    for (int64 i = 0; i < m; ++i) YY[i] = Y[i];
+    for (int64 i = m; i < aligned_size; ++i) YY[i] = 0;
+#if ENABLE_OPENMP
+#pragma omp parallel sections if (n + m >= 100000)
+#endif
+    {
+#if ENABLE_OPENMP
+#pragma omp section
+#endif
+      Ntt(&XX[0], aligned_size, moder);
+#if ENABLE_OPENMP
+#pragma omp section
+#endif
+      Ntt(&YY[0], aligned_size, moder);
+    }
+    const uint64 mod = moder.mod;
+    for (int64 i = 0; i < aligned_size; ++i) {
+#if PE_HAS_INT128
+      XX[i] = Mod128And64(static_cast<uint128>(XX[i]) * YY[i], mod);
+#else
+      XX[i] = MulModEx(XX[i], YY[i], mod);
+#endif
+    }
+    Ntt(&XX[0], aligned_size, moder, true);
+    tresult[id] = std::move(XX);
+  }
+
+  const int64 result_size = n + m - 1;
+#if ENABLE_OPENMP
+#pragma omp parallel for schedule(dynamic, 100000) if (n + m >= 100000)
+#endif
+  for (int64 i = 0; i < result_size; ++i) {
+    const uint64 a = tresult[0][i];
+    const uint64 b = tresult[1][i];
+    const uint64 x = b >= a ? b - a : b + NttConstant::M2 - a;
+#if PE_HAS_INT128
+    const uint64 y = Mod128And64(
+        static_cast<uint128>(x) * NttConstant::INV_M1__M2, NttConstant::M2);
+    const uint128 t = static_cast<uint128>(y) * NttConstant::M1 + a;
+    result[i] = mod > 0 ? t % mod : t;
+#else
+    PE_ASSERT(mod > 0);
+    const uint64 y = MulModEx(x, NttConstant::INV_M1__M2, NttConstant::M2);
+    const uint64 t = MulModEx(y % mod, NttConstant::M1 % mod, mod);
+    result[i] = AddMod(t, a % mod, mod);
+#endif
+  }
+}
+
+// Multiply two polynomials.
+// The length of result is at least n + m - 1.
+POLY_MUL_IMPL(PolyMulLarge, PolyMulLargeImpl)
+}  // namespace ntt64
+
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyAdd(const T* X, const int64 n, const T* Y, const int64 m, T* result,
+            int64 mod) {
+  if (n <= m) {
+    for (int64 i = 0; i < n; ++i) {
+      result[i] = AddMod(X[i], Y[i], mod);
+    }
+    std::copy(Y + n, Y + m, result + n);
+  } else {
+    for (int64 i = 0; i < m; ++i) {
+      result[i] = AddMod(X[i], Y[i], mod);
+    }
+    std::copy(X + m, X + n, result + m);
+  }
+}
+
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(std::vector<T>)
+    PolyAdd(const std::vector<T>& X, const std::vector<T>& Y, int64 mod) {
+  const auto n = static_cast<int64>(X.size());
+  const auto m = static_cast<int64>(Y.size());
+
+  std::vector<T> result(std::max(n, m));
+  PolyAdd(&X[0], n, &Y[0], m, &result[0], mod);
+
+  return result;
+}
+
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolySub(const T* X, const int64 n, const T* Y, const int64 m, T* result,
+            int64 mod) {
+  if (n <= m) {
+    for (int64 i = 0; i < n; ++i) {
+      result[i] = SubMod(X[i], Y[i], mod);
+    }
+    for (int64 i = n; i < m; ++i) {
+      result[i] = Y[i] == 0 ? 0 : mod - Y[i];
+    }
+  } else {
+    for (int64 i = 0; i < m; ++i) {
+      result[i] = SubMod(X[i], Y[i], mod);
+    }
+    std::copy(X + m, X + n, result + m);
+  }
+}
+
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(std::vector<T>)
+    PolySub(const std::vector<T>& X, const std::vector<T>& Y, int64 mod) {
+  const auto n = static_cast<int64>(X.size());
+  const auto m = static_cast<int64>(Y.size());
+
+  std::vector<T> result(std::max(n, m));
+  PolySub(&X[0], n, &Y[0], m, &result[0], mod);
+
+  return result;
+}
+
+namespace pe_internal {
+// Multiply two polynomials of the same length.
+// size result >= 2 * n
+// size return = 2 * n (deg return = 2 * n - 1)
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyMulDcImpl(const T* X, const T* Y, const int64 n, T* result, int64 mod) {
+  static_assert(pe_is_unsigned<T>::value, "T must be unsigned");
+
+  const int64 n2 = n << 1;
+  if (n <= 49) {
+    std::fill(result, result + n2, 0);
+    for (int64 i = 0; i < n; ++i) {
+      for (int64 j = 0; j < n; ++j) {
+        result[i + j] = AddMod(result[i + j], MulModEx(X[i], Y[j], mod), mod);
+      }
+    }
+    return;
+  }
+
+  const int64 m1 = (n + 1) >> 1;
+  const int64 m0 = n - m1;
+  const int64 dbm1 = m1 << 1;
+  const int64 dbm0 = m0 << 1;
+  // m1 >= m0
+  const T* x0 = X + m1;
+  const T* y0 = Y + m1;
+  const T* x1 = X;
+  const T* y1 = Y;
+
+  T* x0y0 = new T[dbm1];
+  T* x1y1 = new T[dbm1];
+#if ENABLE_OPENMP
+#pragma omp parallel sections if (n > 5000)
+#endif
+  {
+#if ENABLE_OPENMP
+#pragma omp section
+#endif
+    PolyMulDcImpl(x0, y0, m0, x0y0, mod);
+#if ENABLE_OPENMP
+#pragma omp section
+#endif
+    PolyMulDcImpl(x1, y1, m1, x1y1, mod);
+  }
+  if (m0 != m1) {
+    x0y0[dbm0] = 0;
+    x0y0[dbm0 + 1] = 0;
+  }
+  T* w = new T[dbm1];
+  {
+    T* u = new T[m1];
+    T* v = new T[m1];
+
+    for (int64 i = 0; i < m0; ++i) {
+      u[i] = AddMod(x0[i], x1[i], mod), v[i] = AddMod(y0[i], y1[i], mod);
+    }
+    if (m0 != m1) {
+      u[m1 - 1] = x1[m1 - 1];
+      v[m1 - 1] = y1[m1 - 1];
+    }
+    PolyMulDcImpl(u, v, m1, w, mod);
+    delete[] u;
+    delete[] v;
+    for (int64 i = 0; i < m1 * 2; ++i) {
+      w[i] = SubMod(w[i], AddMod(x0y0[i], x1y1[i], mod), mod);
+    }
+  }
+  std::fill(result, result + n2, 0);
+  for (int64 i = 0; i < dbm0; ++i) {
+    result[dbm1 + i] = AddMod(result[dbm1 + i], x0y0[i], mod);
+  }
+  for (int64 i = 0; i < dbm1; ++i) {
+    result[m1 + i] = AddMod(result[m1 + i], w[i], mod);
+  }
+  for (int64 i = 0; i < dbm1; ++i) {
+    result[i] = AddMod(result[i], x1y1[i], mod);
+  }
+  delete[] x0y0;
+  delete[] x1y1;
+  delete[] w;
+}
+}  // namespace pe_internal
+
+// Multiply two polynomials.
+// size result >= n + m - 1
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyMulDc(const T* X, const int64 n, const T* Y, const int64 m, T* result,
+              int64 mod) {
+  using unsignedT = typename pe_make_unsigned<T>::type;
+  // In case n == m, we still allocate tempory result space to meet the
+  // requirement of PolyMulDcImpl.
+  const int64 v = std::max(n, m);
+  std::vector<T> tresult(v * 2);
+  if (n < m) {
+    std::vector<T> XX(2 * v);
+    for (int64 i = 0; i < n; ++i) {
+      XX[i] = X[i];
+    }
+    for (int64 i = n; i < m; ++i) {
+      XX[i] = 0;
+    }
+    pe_internal::PolyMulDcImpl<unsignedT>(
+        reinterpret_cast<const unsignedT*>(&XX[0]),
+        reinterpret_cast<const unsignedT*>(Y), m,
+        reinterpret_cast<unsignedT*>(&tresult[0]), mod);
+  } else {
+    std::vector<T> YY(2 * v);
+    for (int64 i = 0; i < m; ++i) {
+      YY[i] = Y[i];
+    }
+    for (int64 i = m; i < n; ++i) {
+      YY[i] = 0;
+    }
+    pe_internal::PolyMulDcImpl<unsignedT>(
+        reinterpret_cast<const unsignedT*>(X),
+        reinterpret_cast<const unsignedT*>(&YY[0]), n,
+        reinterpret_cast<unsignedT*>(&tresult[0]), mod);
+  }
+  std::copy(tresult.begin(), tresult.begin() + n + m - 1, result);
+}
+
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(std::vector<T>)
+    PolyMulDc(const std::vector<T>& X, const std::vector<T>& Y, int64 mod) {
+  using unsignedT = typename pe_make_unsigned<T>::type;
+
+  const auto n = static_cast<int64>(X.size());
+  const auto m = static_cast<int64>(Y.size());
+  const int64 result_size = n + m - 1;
+  if (n == m) {
+    std::vector<T> result(2 * n);
+    pe_internal::PolyMulDcImpl<unsignedT>(
+        reinterpret_cast<const unsignedT*>(&X[0]),
+        reinterpret_cast<const unsignedT*>(&Y[0]), n,
+        reinterpret_cast<unsignedT*>(&result[0]), mod);
+    result.resize(result_size);
+    return result;
+  } else if (n > m) {
+    std::vector<T> YY;
+    std::vector<T> result(2 * n);
+    YY.resize(n);
+    for (int64 i = 0; i < m; ++i) YY[i] = Y[i];
+    pe_internal::PolyMulDcImpl<unsignedT>(
+        reinterpret_cast<const unsignedT*>(&X[0]),
+        reinterpret_cast<const unsignedT*>(&YY[0]), n,
+        reinterpret_cast<unsignedT*>(&result[0]), mod);
+    result.resize(result_size);
+    return result;
+  } else {
+    std::vector<T> XX;
+    std::vector<T> result(2 * m);
+    XX.resize(m);
+    for (int64 i = 0; i < n; ++i) XX[i] = X[i];
+    pe_internal::PolyMulDcImpl<unsignedT>(
+        reinterpret_cast<const unsignedT*>(&XX[0]),
+        reinterpret_cast<const unsignedT*>(&Y[0]), m,
+        reinterpret_cast<unsignedT*>(&result[0]), mod);
+    result.resize(result_size);
+    return result;
+  }
+}
+
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyMul(const T* X, const int64 n, const T* Y, const int64 m, T* result,
+            int64 mod) {
+  using unsignedT = typename pe_make_unsigned<T>::type;
+
+  const int isBig = std::max(n, m) >= 50;
+  if (isBig) {
+#if HAS_POLY_MUL_FLINT
+    poly_flint::PolyMulNMod(&X[0], n, &Y[0], m, result, mod);
+#elif HAS_POLY_MUL_MIN25
+    poly_min25::PolyMulLarge(&X[0], n, &Y[0], m, result, mod);
+#elif HAS_POLY_MUL_NTT32
+    ntt32::PolyMulLarge(&X[0], n, &Y[0], m, result, mod);
+#elif HAS_POLY_MUL_NTT64
+    ntt64::PolyMulLarge(&X[0], n, &Y[0], m, result, mod);
+#else
+
+#if defined(COMPILER_GNU)
+#warning "PolyMul may be very slow."
+#else
+#pragma message("PolyMul may be very slow.")
+#endif
+
+    PolyMulDc(&X[0], n, &Y[0], m, result, mod);
+#endif
+  } else {
+    PolyMulDc(&X[0], n, &Y[0], m, result, mod);
+  }
+}
+
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(std::vector<T>)
+    PolyMul(const std::vector<T>& X, const std::vector<T>& Y, int64 mod) {
+  const auto n = static_cast<int64>(X.size());
+  const auto m = static_cast<int64>(Y.size());
+
+  std::vector<T> result(n + m - 1);
+  PolyMul(&X[0], n, &Y[0], m, &result[0], mod);
+
+  return result;
+}
+
+namespace pe_internal {
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyInvDoublingImpl(int64 n, const T* a, T* b, T* tmp[2], int64 mod) {
+  static_assert(pe_is_unsigned<T>::value, "T must be unsigned");
+  if (n == 1) {
+    b[0] = PowerModEx(a[0], mod - 2, mod);
+  } else {
+    const int64 m = (n + 1) >> 1;
+    PolyInvDoublingImpl(m, a, b, tmp, mod);
+    std::fill(b + m, b + n, 0);
+    PolyMul(b, m, b, m, tmp[0], mod);
+    if (m + m - 2 < n - 1) {
+      tmp[0][n - 1] = 0;
+    }
+    PolyMul(a, n, tmp[0], n, tmp[1], mod);
+    for (int64 i = 0; i < n; ++i) {
+      auto t = b[i] << 1;
+      if (t >= static_cast<uint64>(mod)) t -= mod;
+      t = t + mod - tmp[1][i];
+      if (t >= static_cast<uint64>(mod)) t -= mod;
+      b[i] = t;
+    }
+  }
+}
+
+// size result >= n
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyInvDoublingImpl(const T* x, int64 m, int64 n, T* result, int64 mod) {
+  // It is assumed that mod is a prime
+  const int64 t = std::max(n, m);
+  const int64 p = 1LL << pe_lgll(4 * t - 1);
+
+  // a
+  std::vector<T> a(p);
+  for (int64 i = 0; i < m; ++i) {
+    a[i] = x[i];
+  }
+  for (int64 i = m; i < p; ++i) {
+    a[i] = 0;
+  }
+
+  // b
+  std::vector<T> b(n);
+
+  // tmp
+  std::vector<T> tmp_data[2];
+  T* tmp[2];
+  for (int64 i = 0; i < 2; ++i) {
+    tmp_data[i].resize(p);
+    tmp[i] = &tmp_data[i][0];
+  }
+
+  PolyInvDoublingImpl(n, &a[0], &b[0], tmp, mod);
+  std::copy(b.begin(), b.begin() + n, result);
+}
+}  // namespace pe_internal
+
+// size result >= n
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyInvDoubling(const T* x, int64 m, int64 n, T* result, int64 mod) {
+  using unsignedT = typename pe_make_unsigned<T>::type;
+  pe_internal::PolyInvDoublingImpl<unsignedT>(
+      reinterpret_cast<const unsignedT*>(x), m, n,
+      reinterpret_cast<unsignedT*>(result), mod);
+}
+
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(std::vector<T>)
+    PolyInvDoubling(const std::vector<T>& x, int64 n, int64 mod) {
+  // It is assumed that mod is a prime
+  const auto m = static_cast<int64>(x.size());
+
+  // b
+  std::vector<T> b(n);
+
+  PolyInvDoubling(&x[0], m, n, &b[0], mod);
+
+  return b;
+}
+
+// size result >= n
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyInv(const T* x, int64 m, int64 n, T* result, int64 mod) {
+  using unsignedT = typename pe_make_unsigned<T>::type;
+#if HAS_POLY_FLINT
+  poly_flint::PolyInv<unsignedT>(reinterpret_cast<const unsignedT*>(x), m, n,
+                                 reinterpret_cast<unsignedT*>(result), mod);
+#else
+  PolyInvDoubling<unsignedT>(reinterpret_cast<const unsignedT*>(x), m, n,
+                             reinterpret_cast<unsignedT*>(result), mod);
+#endif
+}
+
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(std::vector<T>)
+    PolyInv(const std::vector<T>& x, int64 n, int64 mod) {
+  // It is assumed that mod is a prime
+  const auto m = static_cast<int64>(x.size());
+
+  // b
+  std::vector<T> b(n);
+
+  PolyInv(&x[0], m, n, &b[0], mod);
+
+  return b;
+}
+
+namespace pe_internal {
+// size r >= m
+// size q >= n - m + 1
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyDivAndModDcImpl(const T* X, int64 n, const T* Y, int64 m, T* q, T* r,
+                        int64 mod) {
+  static_assert(pe_is_unsigned<T>::value, "T must be unsigned");
+
+  if (m > n) {
+    if (r) {
+      std::copy(X, X + n, r);
+      std::fill(r + n, r + m, 0);
+    }
+    if (q) {
+      q[0] = 0;
+    }
+    return;
+  }
+  std::vector<T> YR(m);
+  for (int64 i = 0; i < m; ++i) YR[i] = Y[m - 1 - i];
+  std::vector<T> IYR = PolyInv(YR, n - m + 1, mod);
+  std::vector<T> XR(n);
+  for (int64 i = 0; i < n; ++i) XR[i] = X[n - 1 - i];
+  std::vector<T> Z = PolyMul(XR, IYR, mod);
+  Z.resize(n - m + 1);
+  std::reverse(Z.begin(), Z.end());
+  if (q) {
+    std::copy(Z.begin(), Z.end(), q);
+  }
+  if (r) {
+    std::vector<T> tmp(n);
+    PolyMul(&Y[0], m, &Z[0], n - m + 1, &tmp[0], mod);
+    for (int64 i = 0; i < m; ++i) {
+      r[i] = X[i] >= tmp[i] ? X[i] - tmp[i] : X[i] + mod - tmp[i];
+    }
+  }
+}
+}  // namespace pe_internal
+
+POLY_DIV_AND_MOD_IMPL(PolyDivAndModDc, pe_internal::PolyDivAndModDcImpl)
+POLY_DIV_IMPL(PolyDivDc, PolyDivAndModDc)
+POLY_MOD_IMPL(PolyModDc, PolyDivAndModDc)
+
+namespace pe_internal {
+// size q >= n - m + 1
+// size r >= m
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyDivAndModNormalImpl(const T* X, int64 n, const T* Y, int64 m, T* q,
+                            T* r, int64 mod) {
+  static_assert(pe_is_unsigned<T>::value, "T must be unsigned");
+
+  if (m > n) {
+    if (r) {
+      std::copy(X, X + n, r);
+      std::fill(r + n, r + m, 0);
+    }
+    if (q) {
+      q[0] = 0;
+    }
+    return;
+  }
+
+  int64 top = 0;
+  std::vector<T> tmp(X, X + n);
+  int64 t = InvOf(Y[m - 1], mod);
+  for (int64 i = n - 1; i >= m - 1; --i) {
+    int64 u = MulModEx(tmp[i], t, mod);
+    for (int64 j = i, k = m - 1; k >= 0; --j, --k) {
+      tmp[j] = SubMod(tmp[j], MulModEx(u, Y[k], mod), mod);
+    }
+    if (q) {
+      q[top++] = u;
+    }
+  }
+  if (q) {
+    std::reverse(q, q + top);
+  }
+  if (r) {
+    std::copy(tmp.begin(), tmp.begin() + m, r);
+  }
+}
+}  // namespace pe_internal
+
+POLY_DIV_AND_MOD_IMPL(PolyDivAndModNormal, pe_internal::PolyDivAndModNormalImpl)
+POLY_DIV_IMPL(PolyDivNormal, PolyDivAndModNormal)
+POLY_MOD_IMPL(PolyModNormal, PolyDivAndModNormal)
+
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyDivAndMod(const T* X, const int64 n, const T* Y, const int64 m, T* q,
+                  T* r, int64 mod) {
+  using unsignedT = typename pe_make_unsigned<T>::type;
+#if HAS_POLY_FLINT
+  poly_flint::poly_flint_internal::PolyDivAndModImpl<unsignedT>(
+      reinterpret_cast<const unsignedT*>(X), n,
+      reinterpret_cast<const unsignedT*>(Y), m, reinterpret_cast<unsignedT*>(q),
+      reinterpret_cast<unsignedT*>(r), mod);
+#else
+  // This condition also includes the case n < m;
+  if ((n - m) * m <= 1000) {
+    pe_internal::PolyDivAndModNormalImpl<unsignedT>(
+        reinterpret_cast<const unsignedT*>(X), n,
+        reinterpret_cast<const unsignedT*>(Y), m,
+        reinterpret_cast<unsignedT*>(q), reinterpret_cast<unsignedT*>(r), mod);
+  } else {
+    pe_internal::PolyDivAndModDcImpl<unsignedT>(
+        reinterpret_cast<const unsignedT*>(X), n,
+        reinterpret_cast<const unsignedT*>(Y), m,
+        reinterpret_cast<unsignedT*>(q), reinterpret_cast<unsignedT*>(r), mod);
+  }
+#endif
+}
+
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value))
+    RETURN(std::tuple<std::vector<T>, std::vector<T>>)
+        PolyDivAndMod(const std::vector<T>& X, const std::vector<T>& Y,
+                      int64 mod) {
+  const int64 n = static_cast<int64>(X.size()) - 1;
+  const int64 m = static_cast<int64>(Y.size()) - 1;
+
+  std::vector<T> q(std::max<int64>(n - m + 1, 1LL));
+  std::vector<T> r(m + 1);
+  PolyDivAndMod(&X[0], n + 1, &Y[0], m + 1, &q[0], &r[0], mod);
+
+  r[m] = 0;
+  AdjustPolyLeadingZero(r);
+  return std::make_tuple(std::move(q), std::move(r));
+}
+
+POLY_DIV_IMPL(PolyDiv, PolyDivAndMod)
+POLY_MOD_IMPL(PolyMod, PolyDivAndMod)
+
+namespace pe_internal {
+// size result == m
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyDerivativeImpl(const T* x, int64 m, T* result, int64 mod) {
+  for (int64 i = 1; i < m; ++i) {
+    result[i - 1] = MulModEx(x[i], i, mod);
+  }
+  result[m - 1] = 0;
+}
+}  // namespace pe_internal
+
+// size result == m
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyDerivative(const T* x, int64 m, T* result, int64 mod) {
+  using unsignedT = typename pe_make_unsigned<T>::type;
+  pe_internal::PolyDerivativeImpl<unsignedT>(
+      reinterpret_cast<const unsignedT*>(x), m,
+      reinterpret_cast<unsignedT*>(result), mod);
+}
+
+// size result == m
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(std::vector<T>)
+    PolyDerivative(const std::vector<T>& x, int64 mod) {
+  // It is assumed that mod is a prime
+  const auto m = static_cast<int64>(x.size());
+
+  // b
+  std::vector<T> b(m);
+
+  PolyDerivative(&x[0], m, &b[0], mod);
+
+  return b;
+}
+
+namespace pe_internal {
+// size result == m + 1
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyIntegralImpl(const T* x, int64 m, T* result, int64 mod) {
+  std::vector<T> y(m + 1);
+  InitInv(&y[0], m, mod);
+  for (int64 i = 0; i < m; ++i) {
+    result[i + 1] = MulModEx(x[i], y[i + 1], mod);
+  }
+  result[0] = static_cast<T>(1 % mod);
+}
+}  // namespace pe_internal
+
+// size result == m + 1
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyIntegral(const T* x, int64 m, T* result, int64 mod) {
+  using unsignedT = typename pe_make_unsigned<T>::type;
+  pe_internal::PolyIntegralImpl<unsignedT>(
+      reinterpret_cast<const unsignedT*>(x), m,
+      reinterpret_cast<unsignedT*>(result), mod);
+}
+
+// size result == m + 1
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(std::vector<T>)
+    PolyIntegral(const std::vector<T>& x, int64 mod) {
+  // It is assumed that mod is a prime
+  const auto m = static_cast<int64>(x.size());
+
+  // b
+  std::vector<T> b(m);
+
+  PolyIntegral(&x[0], m, &b[0], mod);
+
+  return b;
+}
+
+namespace pe_internal {
+// size result == n
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyLogNormalImpl(const T* x, int64 m, int64 n, T* result, int64 mod) {
+  std::vector<T> dx(m);
+  PolyDerivative(x, m, &dx[0], mod);
+
+  std::vector<T> y(n);
+  PolyInv(x, m, n, &y[0], mod);
+
+  std::vector<T> z(m - 1 + n - 1);
+  PolyMul(&dx[0], m - 1, &y[0], n, &z[0], mod);
+
+  InitInv(&y[0], n - 1, mod);
+
+  for (int64 i = 0; i < n - 1; ++i) {
+    result[i + 1] = MulModEx(z[i], y[i + 1], mod);
+  }
+  result[0] = 0;
+}
+}  // namespace pe_internal
+
+// size result == n
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyLogNormal(const T* x, int64 m, int64 n, T* result, int64 mod) {
+  using unsignedT = typename pe_make_unsigned<T>::type;
+  pe_internal::PolyLogNormalImpl<unsignedT>(
+      reinterpret_cast<const unsignedT*>(x), m, n,
+      reinterpret_cast<unsignedT*>(result), mod);
+}
+
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(std::vector<T>)
+    PolyLogNormal(const std::vector<T>& x, int64 n, int64 mod) {
+  // It is assumed that mod is a prime
+  const auto m = static_cast<int64>(x.size());
+
+  // b
+  std::vector<T> b(n);
+
+  PolyLogNormal(&x[0], m, n, &b[0], mod);
+
+  return b;
+}
+
+// size result == n
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyLog(const T* x, int64 m, int64 n, T* result, int64 mod) {
+  using unsignedT = typename pe_make_unsigned<T>::type;
+#if HAS_POLY_FLINT
+  poly_flint::PolyLog<unsignedT>(reinterpret_cast<const unsignedT*>(x), m, n,
+                                 reinterpret_cast<unsignedT*>(result), mod);
+#else
+  PolyLogNormal<unsignedT>(reinterpret_cast<const unsignedT*>(x), m, n,
+                           reinterpret_cast<unsignedT*>(result), mod);
+#endif
+}
+
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(std::vector<T>)
+    PolyLog(const std::vector<T>& x, int64 n, int64 mod) {
+  // It is assumed that mod is a prime
+  const auto m = static_cast<int64>(x.size());
+
+  // b
+  std::vector<T> b(n);
+
+  PolyLog(&x[0], m, n, &b[0], mod);
+
+  return b;
+}
+
+namespace pe_internal {
+// size result == n
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyExpNormalImpl(const T* x, int64 m, int64 n, T* result, int64 mod) {
+  PE_ASSERT(x[0] == 0);
+  std::vector<T> ret{static_cast<T>(1 % mod)};
+
+  for (int64 u = 1; u < 2 * n; u = u << 1) {
+    std::vector<T> t0(u);
+    PolyLogNormal(&ret[0], u, u, &t0[0], mod);
+
+    std::vector<T> t1(u);
+    PolySub(x, std::min(u, m), &t0[0], u, &t1[0], mod);
+    t1[0] = AddMod(1, t1[0], mod);
+
+    std::vector<T> t2(u << 1);
+    PolyMul(&ret[0], u, &t1[0], u, &t2[0], mod);
+    t2.resize(u << 1);
+    ret = std::move(t2);
+    ret[0] = 1;
+  }
+
+  ret.resize(n);
+  std::copy(ret.begin(), ret.end(), result);
+}
+}  // namespace pe_internal
+
+// size result == n
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyExpNormal(const T* x, int64 m, int64 n, T* result, int64 mod) {
+  using unsignedT = typename pe_make_unsigned<T>::type;
+  pe_internal::PolyExpNormalImpl<unsignedT>(
+      reinterpret_cast<const unsignedT*>(x), m, n,
+      reinterpret_cast<unsignedT*>(result), mod);
+}
+
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(std::vector<T>)
+    PolyExpNormal(const std::vector<T>& x, int64 n, int64 mod) {
+  // It is assumed that mod is a prime
+  const auto m = static_cast<int64>(x.size());
+
+  // b
+  std::vector<T> b(n);
+
+  PolyExpNormal(&x[0], m, n, &b[0], mod);
+
+  return b;
+}
+
+// size result == n
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyExp(const T* x, int64 m, int64 n, T* result, int64 mod) {
+  using unsignedT = typename pe_make_unsigned<T>::type;
+#if HAS_POLY_FLINT
+  poly_flint::PolyExp<unsignedT>(reinterpret_cast<const unsignedT*>(x), m, n,
+                                 reinterpret_cast<unsignedT*>(result), mod);
+#else
+  PolyExpNormal<unsignedT>(reinterpret_cast<const unsignedT*>(x), m, n,
+                           reinterpret_cast<unsignedT*>(result), mod);
+#endif
+}
+
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(std::vector<T>)
+    PolyExp(const std::vector<T>& x, int64 n, int64 mod) {
+  // It is assumed that mod is a prime
+  const auto m = static_cast<int64>(x.size());
+
+  // b
+  std::vector<T> b(n);
+
+  PolyExp(&x[0], m, n, &b[0], mod);
+
+  return b;
+}
+
+namespace pe_internal {
+// FactSumModer uses PolyMultipointEvaluate.
+struct PSPTree {
+  int64 mod;
+
+  const int64* v;
+  int64 n;
+
+  std::vector<int64> p;
+
+  PSPTree* L;
+  PSPTree* R;
+
+  ~PSPTree() {
+    if (L) delete L;
+    if (R) delete R;
+  }
+
+  static PSPTree* BuildMinus(const int64* values, int64 n, int64 mod) {
+    auto* ptree = new PSPTree();
+    auto& tree = *ptree;
+    tree.mod = mod;
+    tree.v = values;
+    tree.n = n;
+    tree.L = tree.R = nullptr;
+    if (n == 1) {
+      // -x0 + x
+      int64 t = values[0];
+      tree.p.emplace_back(t == 0 ? 0 : mod - t);
+      tree.p.emplace_back(1 % mod);
+      return ptree;
+    }
+    int64 c1 = n >> 1, c2 = n - c1;
+    tree.L = BuildMinus(values, c1, mod);
+    tree.R = BuildMinus(values + c1, c2, mod);
+    tree.p = PolyMul(tree.L->p, tree.R->p, mod);
+    return ptree;
+  }
+
+  static PSPTree* BuildPlus(const int64* values, int64 n, int64 mod) {
+    auto* ptree = new PSPTree();
+    auto& tree = *ptree;
+    tree.mod = mod;
+    tree.v = values;
+    tree.n = n;
+    tree.L = tree.R = nullptr;
+    if (n == 1) {
+      // x0 + x
+      int64 t = values[0];
+      tree.p.emplace_back(t);
+      tree.p.emplace_back(1);
+      return ptree;
+    }
+    int64 c1 = n >> 1, c2 = n - c1;
+    tree.L = BuildPlus(values, c1, mod);
+    tree.R = BuildPlus(values + c1, c2, mod);
+    tree.p = PolyMul(tree.L->p, tree.R->p, mod);
+    return ptree;
+  }
+};
+
+// size(V) = n
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyMultipointEvaluateNormalImpl(const T* X, int64 n, PSPTree* psp,
+                                     T* result, int64 mod) {
+  if (psp->n == 1) {
+    result[0] = (X[0] + psp->v[0] * X[1]) % mod;
+    return;
+  }
+  int64 c1 = psp->n >> 1;
+  int64 c2 = psp->n - c1;
+
+  std::vector<T> m(std::max(psp->L->p.size(), psp->R->p.size()));
+  PolyMod(X, n, reinterpret_cast<const T*>(&psp->L->p[0]),
+          static_cast<int64>(psp->L->p.size()), &m[0], mod);
+  PolyMultipointEvaluateNormalImpl(
+      &m[0], static_cast<int64>(psp->L->p.size()) - 1, psp->L, result, mod);
+  PolyMod(X, n, reinterpret_cast<const T*>(&psp->R->p[0]),
+          static_cast<int64>(psp->R->p.size()), &m[0], mod);
+  PolyMultipointEvaluateNormalImpl(&m[0],
+                                   static_cast<int64>(psp->R->p.size()) - 1,
+                                   psp->R, result + c1, mod);
+}
+
+// size(V) = n
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyMultipointEvaluateNormalImpl(const T* X, int64 n, const T* V, T* result,
+                                     int64 mod) {
+  static_assert(pe_is_unsigned<T>::value, "T must be unsigned");
+  PSPTree* psp = PSPTree::BuildMinus(reinterpret_cast<const int64*>(V), n, mod);
+  PolyMultipointEvaluateNormalImpl(X, n, psp, result, mod);
+  delete psp;
+}
+
+// Tellegen's Principle into Pratice
+// A. Bostan, G. Lecerf, E. Schost
+// size(V) = n
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyMultipointEvaluateBlsImpl(const T* X, int64 n, const T* V, T* result,
+                                  int64 mod) {
+  static_assert(pe_is_unsigned<T>::value, "T must be unsigned");
+  std::vector<std::vector<std::vector<T>>> tree;
+  {
+    std::vector<std::vector<T>> from;
+    for (int64 i = 0; i < n; ++i) {
+      std::vector<T> tmp{(V[i] == 0 ? 0 : mod - V[i]) % mod, 1};
+      from.push_back(tmp);
+    }
+
+    tree.push_back(from);
+    int64 last_size = n;
+    while (last_size != 1) {
+      std::vector<std::vector<T>> to;
+      to.reserve(last_size / 2);
+      for (int64 i = 0; i < last_size / 2; ++i) {
+        to.push_back(PolyMul(from[i * 2], from[i * 2 + 1], mod));
+      }
+      if (last_size & 1) {
+        to.push_back(from[last_size - 1]);
+      }
+      last_size = (last_size + 1) >> 1;
+      from.swap(to);
+      tree.push_back(from);
+    }
+  }
+
+  const int64 d = static_cast<int64>(tree.size()) - 1;
+  {
+    auto alpha = tree[d][0];
+    std::reverse(alpha.begin(), alpha.end());
+    alpha = PolyInv(alpha, n, mod);
+    std::reverse(alpha.begin(), alpha.end());
+
+    std::vector<uint64> b(X, X + n);
+    int64 degb = static_cast<int64>(b.size()) - 1;
+    auto t = PolyMul(alpha, b, mod);
+    assert(sz(t) - 1 == n - 1 + degb);
+    for (int64 i = n - 1, j = 0; i <= (n - 1) + degb; ++i, ++j) {
+      t[j] = t[i];
+    }
+    assert(degb + 1 >= n);
+    t.resize(n);
+    std::reverse(t.begin(), t.end());
+
+    std::vector<std::vector<T>> c(n);
+    c[0] = std::move(t);
+    // c[0] = std::vector<uint64>(X, X+n);
+    for (int64 i = d; i > 0; --i) {
+      auto hi = static_cast<int64>(tree[i].size());
+      for (int64 j = hi - 1; j >= 0; --j) {
+        int64 u = j * 2;
+        int64 v = u + 1;
+        if (v >= static_cast<int64>(tree[i - 1].size())) {
+          c[u] = c[j];
+          continue;
+        }
+        int64 nn = static_cast<int64>(tree[i][j].size()) - 1;
+        std::vector<T> x;
+        {
+          const auto os = static_cast<int64>(tree[i - 1][2 * j].size());
+          std::reverse(tree[i - 1][2 * j].begin(), tree[i - 1][2 * j].end());
+          x = PolyMul(tree[i - 1][2 * j], c[j], mod);
+          int64 s = 0;
+          const auto sizeX = static_cast<int64>(x.size());
+          for (int64 i = os - 1, j = 0; i < sizeX && j < nn; ++i, ++j) {
+            x[j] = x[i];
+            ++s;
+          }
+          x.resize(s);
+        }
+        std::vector<T> y;
+        {
+          const auto os = static_cast<int64>(tree[i - 1][2 * j + 1].size());
+          std::reverse(tree[i - 1][2 * j + 1].begin(),
+                       tree[i - 1][2 * j + 1].end());
+          y = PolyMul(tree[i - 1][2 * j + 1], c[j], mod);
+          int64 s = 0;
+          const auto ySize = static_cast<int64>(y.size());
+          for (int64 i = os - 1, j = 0; i < ySize && j < nn; ++i, ++j) {
+            y[j] = y[i];
+            ++s;
+          }
+          y.resize(s);
+        }
+        c[2 * j + 1] = std::move(x);
+        c[2 * j] = std::move(y);
+      }
+    }
+    for (int64 i = 0; i < n; ++i) result[i] = c[i][0];
+  }
+}
+}  // namespace pe_internal
+
+// size(V) = n
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyMultipointEvaluateNormal(const T* X, const int64 n, const T* V,
+                                 T* result, int64 mod) {
+  using unsignedT = typename pe_make_unsigned<T>::type;
+  pe_internal::PolyMultipointEvaluateNormalImpl<unsignedT>(
+      reinterpret_cast<const unsignedT*>(X), n,
+      reinterpret_cast<const unsignedT*>(V),
+      reinterpret_cast<unsignedT*>(result), mod);
+}
+
+// size x = size v
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(std::vector<T>)
+    PolyMultipointEvaluateNormal(const std::vector<T>& X,
+                                 const std::vector<T>& V, int64 mod) {
+  const auto n = static_cast<int64>(X.size());
+  std::vector<T> result(n);
+  PolyMultipointEvaluateNormal(&X[0], n, &V[0], &result[0], mod);
+  return result;
+}
+
+// size(V) = n
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyMultipointEvaluateBls(const T* X, const int64 n, const T* V, T* result,
+                              int64 mod) {
+  using unsignedT = typename pe_make_unsigned<T>::type;
+  pe_internal::PolyMultipointEvaluateBlsImpl<unsignedT>(
+      reinterpret_cast<const unsignedT*>(X), n,
+      reinterpret_cast<const unsignedT*>(V),
+      reinterpret_cast<unsignedT*>(result), mod);
+}
+
+// size x = size v
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(std::vector<T>)
+    PolyMultipointEvaluateBls(const std::vector<T>& X, const std::vector<T>& V,
+                              int64 mod) {
+  const auto n = static_cast<int64>(X.size());
+  std::vector<T> result(n);
+  PolyMultipointEvaluateBls(&X[0], n, &V[0], &result[0], mod);
+  return result;
+}
+
+// size(V) = n
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyMultipointEvaluate(const T* X, const int64 n, const T* V, T* result,
+                           int64 mod) {
+  using unsignedT = typename pe_make_unsigned<T>::type;
+#if HAS_POLY_FLINT
+  poly_flint::PolyMultipointEvaluate<unsignedT>(
+      reinterpret_cast<const unsignedT*>(X), n,
+      reinterpret_cast<const unsignedT*>(V),
+      reinterpret_cast<unsignedT*>(result), mod);
+#else
+  PolyMultipointEvaluateBls<unsignedT>(reinterpret_cast<const unsignedT*>(X), n,
+                                       reinterpret_cast<const unsignedT*>(V),
+                                       reinterpret_cast<unsignedT*>(result),
+                                       mod);
+#endif
+}
+
+// size x = size v
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(std::vector<T>)
+    PolyMultipointEvaluate(const std::vector<T>& X, const std::vector<T>& V,
+                           int64 mod) {
+  const auto n = static_cast<int64>(X.size());
+  std::vector<T> result(n);
+  PolyMultipointEvaluate(&X[0], n, &V[0], &result[0], mod);
+  return result;
+}
+
+namespace pe_internal {
+// PolyOffsetEvaluate is used by FactModer
+
+// Known f[0],f[1],f[2],...,f[d]
+// Calculate f[0+offset],f[1+offset],f[2+offset],...,f[d+offset]
+// offset > d
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyOffsetEvaluateImpl(int64 d, const T* h, T* result, int64 offset,
+                           const T* preFactInv, T mod) {
+  static_assert(pe_is_unsigned<T>::value, "T must be unsigned");
+
+  std::vector<T> A(d + 1);
+  std::vector<T> B(2 * d + 1);
+  std::vector<T> C(3 * d + 1);
+  std::vector<T> T0(2 * d + 2);
+  std::vector<T> T1(2 * d + 2);
+  for (int64 i = 0; i <= d; ++i) {
+    auto t = MulModEx(h[i], preFactInv[i], mod);
+    t = MulModEx(t, preFactInv[d - i], mod);
+    if ((d - i) & 1) {
+      A[i] = t == 0 ? 0 : mod - t;
+    } else {
+      A[i] = t;
+    }
+  }
+
+  T0[0] = T1[0] = 1;
+  for (int64 i = -d, j = 1; i <= d; ++i, ++j) {
+    T0[j] = MulModEx(T0[j - 1], offset + i, mod);
+  }
+
+  T1[2 * d + 1] = PowerModEx(T0[2 * d + 1], mod - 2, mod);
+  for (int64 i = d - 1, j = 2 * d; i >= -d; --i, --j) {
+    T1[j] = MulModEx(T1[j + 1], offset + i + 1, mod);
+  }
+
+  for (int64 i = -d, j = 1; i <= d; ++i, ++j) {
+    B[j - 1] = MulModEx(T1[j], T0[j - 1], mod);
+  }
+
+  PolyMul(&A[0], d + 1, &B[0], 2 * d + 1, &C[0], mod);
+  std::copy(&C[0] + d, &C[0] + 2 * d + 1, result);
+
+  for (int64 i = 0, j = d + 1; i <= d; ++i, ++j) {
+    result[i] = MulModEx(result[i], T0[j], mod);
+    result[i] = MulModEx(result[i], T1[j - d - 1], mod);
+  }
+}
+}  // namespace pe_internal
+
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyOffsetEvaluate(int64 d, const T* h, T* result, int64 offset,
+                       const T* preFactInv, T mod) {
+  using unsignedT = typename pe_make_unsigned<T>::type;
+  pe_internal::PolyOffsetEvaluateImpl<unsignedT>(
+      d, reinterpret_cast<const unsignedT*>(h),
+      reinterpret_cast<unsignedT*>(result), offset, preFactInv, mod);
+}
+
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(std::vector<T>)
+    PolyOffsetEvaluate(const std::vector<T>& values, int64 offset,
+                       const T* preFactInv, T mod) {
+  const int64 d = static_cast<int64>(values.size()) - 1;
+  std::vector<T> result(d + 1);
+  PolyOffsetEvaluate(d, &values[0], &result[0], offset, preFactInv, mod);
+  return std::move(result);
+}
+
+namespace pe_internal {
+#if 0
+// Y = X
+// s(i) = (Y[1]*x+Y[0])(Y[3]x+Y[2])...(Y[2i+1]x+Y[2i])
+// return s(n-1)
+// size s(n-1) = n + 1
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyBatchMulImpl(const T* X, int64 n, T* result,
+                                   int64 mod) {
+  static_assert(pe_is_unsigned<T>::value, "T must be unsigned");
+  std::vector<std::vector<T>> from;
+  for (int64 i = 0; i < n; ++i) {
+    std::vector<T> tmp{X[2*i] % mod, X[2*i+1]%mod};
+    from.push_back(tmp);
+  }
+  int64 last_size = n;
+  while (last_size != 1) {
+    std::vector<std::vector<T>> to;
+    for (int64 i = 0; i < last_size / 2; ++i) {
+      to.push_back(PolyMul(from[i * 2], from[i * 2 + 1], mod));
+    }
+    if (last_size & 1) {
+      to.push_back(from[last_size - 1]);
+    }
+    last_size = last_size + 1 >> 1;
+    from.swap(to);
+  }
+  auto& t = from[0];
+  PE_ASSERT(sz(t) == n + 1);
+  std::copy(t.begin(), t.end(), result);
+}
+
+// n = e - s
+// Y = X[2s:2e]
+// s(i) = (Y[1]*x+Y[0])(Y[3]x+Y[2])...(Y[2i+1]x+Y[2i])
+// return s(n-1)
+// size s(n-1) = n + 1
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyBatchMulImpl(const T* X, int64 s, int64 e, T* result,
+                                   int64 mod) {
+  PolyBatchMulImpl(X + 2 * s, e - s, result, mod);
+}
+#else
+// n = e - s
+// Y = X[2s:2e]
+// s(i) = (Y[1]*x+Y[0])(Y[3]x+Y[2])...(Y[2i+1]x+Y[2i])
+// return s(n-1)
+// size s(n-1) = n + 1
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyBatchMulImpl(const T* X, int64 s, int64 e, T* result, int64 mod) {
+  static_assert(pe_is_unsigned<T>::value, "T must be unsigned");
+  const int64 n = e - s;
+  if (n == 1) {
+    std::copy(X + s * 2, X + e * 2, result);
+    return;
+  }
+  const int64 half = n >> 1;
+  std::vector<T> A(half + 1);
+  std::vector<T> B(n - half + 1);
+#if ENABLE_OPENMP
+#pragma omp parallel sections if (n > 5000)
+#endif
+  {
+#if ENABLE_OPENMP
+#pragma omp section
+#endif
+    PolyBatchMulImpl(X, s, s + half, &A[0], mod);
+#if ENABLE_OPENMP
+#pragma omp section
+#endif
+    PolyBatchMulImpl(X, s + half, e, &B[0], mod);
+  }
+  PolyMul(&A[0], half + 1, &B[0], n - half + 1, result, mod);
+}
+#endif
+}  // namespace pe_internal
+
+// Y = X
+// s(i) = (Y[1]*x+Y[0])(Y[3]x+Y[2])...(Y[2i+1]x+Y[2i])
+// return s(n-1)
+// size s(n-1) = n + 1
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyBatchMul(const T* X, const int64 n, T* result, int64 mod) {
+  using unsignedT = typename pe_make_unsigned<T>::type;
+  pe_internal::PolyBatchMulImpl<unsignedT>(
+      reinterpret_cast<const unsignedT*>(X), 0, n,
+      reinterpret_cast<unsignedT*>(result), mod);
+}
+
+// n = size X / 2
+// Y = X
+// s(i) = (Y[1]*x+Y[0])(Y[3]x+Y[2])...(Y[2i+1]x+Y[2i])
+// return s(n-1)
+// size s(n-1) = n + 1
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(std::vector<T>)
+    PolyBatchMul(const std::vector<T>& X, int64 mod) {
+  const auto n = static_cast<int64>(X.size());
+  std::vector<T> result(n / 2 + 1);
+  PolyBatchMul(&X[0], n / 2, &result[0], mod);
+  return result;
+}
+
+// PolyBatchMulAcc is used by FactSumModer
+
+#if 0
+// n = e - s
+// Y = X[2s:2e]
+// s(i) = (Y[1]*x+Y[0])(Y[3]x+Y[2])...(Y[2i+1]x+Y[2i])
+// return s(0) + s(2) + s(3) + ... + s(n-1)
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(std::vector<T>)
+PolyBatchMulAcc(const std::vector<T>& X, int64 s, int64 e, uint64 mod) {
+  const int64 n = e - s;
+  if (n == 1) {
+    return std::vector<T>(X.begin() + s * 2, X.begin() + e * 2);
+  }
+
+  const int64 half = n / 2;
+  std::vector<T> A, B, C;
+#if ENABLE_OPENMP
+#pragma omp parallel sections if (n > 5000)
+#endif
+  {
+#if ENABLE_OPENMP
+#pragma omp section
+#endif
+    A = PolyBatchMulAcc(X, s, s + half, mod);
+#if ENABLE_OPENMP
+#pragma omp section
+#endif
+    B = PolyBatchMulAcc(X, s + half, e, mod);
+#if ENABLE_OPENMP
+#pragma omp section
+#endif
+    C = PolyBatchMul(std::vector<T>(X.begin() + s * 2, X.begin() + (s + half)*2), mod);
+  }
+
+  B = PolyMul(B, C, mod);
+  return PolyAdd(A, B, mod);
+}
+
+// n = X.size() / 2
+// Y = X
+// s(i) = (Y[1]*x+Y[0])(Y[3]x+Y[2])...(Y[2i+1]x+Y[2i])
+// return s(0) + s(2) + s(3) + ... + s(n-1)
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(std::vector<T>)
+PolyBatchMulAcc(const std::vector<T>& X, uint64 mod) {
+  return PolyBatchMulAcc(X, 0, X.size() / 2, mod);
+}
+
+// n = e - s
+// Y = X[2s:2e]
+// s(i) = (Y[1]*x+Y[0])(Y[3]x+Y[2])...(Y[2i+1]x+Y[2i])
+// M = s(n-1)
+// return s(0) + s(2) + s(3) + ... + s(n-1)
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(std::vector<T>)
+PolyBatchMulAcc(const std::vector<T>& X, int64 s, int64 e, std::vector<T>& M, uint64 mod) {
+  std::vector<T> Y(X.begin() + s * 2, X.begin() + e * 2);
+  M = PolyBatchMul(Y, mod);
+  return PolyBatchMulAcc(Y, mod);
+}
+#else
+// n = e - s
+// Y = X[2s:2e]
+// s(i) = (Y[1]*x+Y[0])(Y[3]x+Y[2])...(Y[2i+1]x+Y[2i])
+// M = s(n-1)
+// return s(0) + s(2) + s(3) + ... + s(n-1)
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(std::vector<T>)
+    PolyBatchMulAcc(const std::vector<T>& X, int64 s, int64 e,
+                    std::vector<T>& M, uint64 mod) {
+  const int64 n = e - s;
+  if (n == 1) {
+    std::vector<T> t(X.begin() + s * 2, X.begin() + e * 2);
+    M = t;
+    return t;
+  }
+  std::vector<T> C, D;
+  const int64 half = n / 2;
+  std::vector<T> A, B;
+#if ENABLE_OPENMP
+#pragma omp parallel sections if (n > 5000)
+#endif
+  {
+#if ENABLE_OPENMP
+#pragma omp section
+#endif
+    A = PolyBatchMulAcc(X, s, s + half, C, mod);
+#if ENABLE_OPENMP
+#pragma omp section
+#endif
+    B = PolyBatchMulAcc(X, s + half, e, D, mod);
+  }
+#if ENABLE_OPENMP
+#pragma omp parallel sections if (n > 5000)
+#endif
+  {
+#if ENABLE_OPENMP
+#pragma omp section
+#endif
+    B = PolyMul(B, C, mod);
+#if ENABLE_OPENMP
+#pragma omp section
+#endif
+    M = PolyMul(C, D, mod);
+  }
+  return PolyAdd(A, B, mod);
+}
+
+// n = X.size() / 2
+// Y = X
+// s(i) = (Y[1]*x+Y[0])(Y[3]x+Y[2])...(Y[2i+1]x+Y[2i])
+// return s(0) + s(2) + s(3) + ... + s(n-1)
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(std::vector<T>)
+    PolyBatchMulAcc(const std::vector<T>& X, uint64 mod) {
+  std::vector<T> C;
+  return PolyBatchMulAcc(X, 0, X.size() / 2, C, mod);
+}
+#endif
+}  // namespace pe
+#endif

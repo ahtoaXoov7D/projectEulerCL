@@ -1,0 +1,19 @@
+---
+:id: 148
+:name: Exploring Pascal's triangle
+:url: https://projecteuler.net/problem=148
+:content: |+
+  We can easily verify that none of the entries in the first seven rows of Pascal's triangle are divisible by 7:
+
+  | &nbsp; | &nbsp; | &nbsp; | &nbsp; | &nbsp; | &nbsp; | &nbsp;1 |
+  | &nbsp; | &nbsp; | &nbsp; | &nbsp; | &nbsp; | &nbsp;1 | &nbsp; | &nbsp;1 |
+  | &nbsp; | &nbsp; | &nbsp; | &nbsp; | &nbsp;1 | &nbsp; | &nbsp;2 | &nbsp; | &nbsp;1 |
+  | &nbsp; | &nbsp; | &nbsp; | &nbsp;1 | &nbsp; | &nbsp;3 | &nbsp; | &nbsp;3 | &nbsp; | &nbsp;1 |
+  | &nbsp; | &nbsp; | &nbsp;1 | &nbsp; | &nbsp;4 | &nbsp; | &nbsp;6 | &nbsp; | &nbsp;4 | &nbsp; | &nbsp;1 |
+  | &nbsp; | &nbsp;1 | &nbsp; | &nbsp;5 | &nbsp; | 10 | &nbsp; | 10 | &nbsp; | &nbsp;5 | &nbsp; | &nbsp;1 |
+  | 1 | &nbsp; | &nbsp;6 | &nbsp; | 15 | &nbsp; | 20 | &nbsp; | 15 | &nbsp; | &nbsp;6 | &nbsp; | &nbsp;1 |
+
+  However, if we check the first one hundred rows, we will find that only 2361 of the 5050 entries are _not_ divisible by 7.
+
+  Find the number of entries which are _not_ divisible by 7 in the first one billion (10<sup>9</sup>) rows of Pascal's triangle.
+

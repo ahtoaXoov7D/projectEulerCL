@@ -1,0 +1,44 @@
+.wrap
+  #about
+    %p
+      PuzzleNode is a site for coders who enjoy to work on challenging 
+      problems, and is inspired by similar efforts such as
+      = link_to "Project Euler", "http://projecteuler.net/"
+      and the
+      = link_to "Internet Problem Solving Contest", "http://ipsc.ksp.sk/"
+      \. Once upon a time it also served as an entrance exam of sorts for
+      folks looking to join
+      = link_to "Mendicant University.", "http://mendicantuniversity.org"
+
+    %p
+      This project was developed, maintained, and supported by Mendicant
+      University students and staff until the school
+      = link_to "changed directions", "http://mendicantuniversity.org/updates/2012/05/06/building-a-new-mu.html"
+      and put a hold on all existing projects, including PuzzleNode. If you
+      are interested in jump starting this project just open a ticket in our
+      = link_to "issue tracker",
+        "https://github.com/mendicant-original/puzzlenode/issues"
+      to get the ball rolling.
+
+    %p
+      Happy hacking!
+      = link_to_function "Return to top", "PuzzleNode.about()", :class => "close"
+
+  .teaser
+    = link_to_function "PuzzleNode is a site for coders who enjoy to work on challenging problems ...",
+      "PuzzleNode.about()"
+
+  .bottom
+    = link_to "http://mendicantuniversity.org" do
+      #mendicant-logo
+
+:javascript
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-15397397-5']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();

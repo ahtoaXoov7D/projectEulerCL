@@ -1,0 +1,12 @@
+---
+:id: 53
+:name: Combinatoric selections
+:url: https://projecteuler.net/problem=53
+:content: "There are exactly ten ways of selecting three from five, 12345:\n\n123,
+  124, 125, 134, 135, 145, 234, 235, 245, and 345\n\nIn combinatorics, we use the
+  notation, <sup>5</sup>C<sub>3</sub> = 10.\n\nIn general,\n\n| <sup><var>n</var></sup>C<sub><var>r</var></sub>
+  = | \n<var>n</var>!  \n<var>r</var>!(<var>n−r</var>)!\n | ,where <var>r</var> ≤
+  <var>n</var>, <var>n</var>! = <var>n</var>×(<var>n</var>−1)×...×3×2×1, and 0! =
+  1. |\n\nIt is not until <var>n</var> = 23, that a value exceeds one-million: <sup>23</sup>C<sub>10</sub>
+  = 1144066.\n\nHow many, not necessarily distinct, values of &nbsp;<sup><var>n</var></sup>C<sub><var>r</var></sub>,
+  for 1 ≤ <var>n</var> ≤ 100, are greater than one-million?\n\n"

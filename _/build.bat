@@ -1,0 +1,1 @@
+g++ src/pe_rating.cpp src/pe_lib.cpp src/EloR.cpp --std=c++11 -O3

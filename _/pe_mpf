@@ -1,0 +1,413 @@
+#ifndef PE_MPF_
+#define PE_MPF_
+
+#include "pe_base"
+#include "pe_int128"
+#include "pe_type_traits"
+#include "pe_nt"
+#include "pe_mpz"
+
+#if ENABLE_GMP
+
+#define HAS_MPF 1
+
+namespace pe {
+#if PE_HAS_CPP20
+template <class T>
+concept PeFloatArithmeticOperation = requires(T v) {
+  v + 1;
+  v - 1;
+  v * 1;
+  v / 1;
+  1 - v;
+  1 * v;
+  1 + v;
+  1 / v;
+  v + 1LL;
+  v - 1LL;
+  v * 1LL;
+  v / 1LL;
+  1LL + v;
+  1LL - v;
+  1LL * v;
+  1LL / v;
+#if PE_HAS_INT128
+  v + (int128)1;
+  v - (int128)1;
+  v*(int128)1;
+  v / (int128)1;
+  (int128)1 + v;
+  (int128)1 - v;
+  (int128)1 * v;
+  (int128)1 / v;
+#endif
+  v + MpInteger(1);
+  v - MpInteger(1);
+  v* MpInteger(1);
+  v / MpInteger(1);
+  MpInteger(1) + v;
+  MpInteger(1) - v;
+  MpInteger(1) * v;
+  MpInteger(1) / v;
+  v + 1.;
+  v - 1.;
+  v * 1.;
+  v / 1.;
+  1. + v;
+  1. - v;
+  1. * v;
+  1. / v;
+  v + (long double)1.;
+  v - (long double)1.;
+  v*(long double)1.;
+  v / (long double)1.;
+  (long double)1. + v;
+  (long double)1. - v;
+  (long double)1. * v;
+  (long double)1. / v;
+  v + v;
+  v - v;
+  v* v;
+  v / v;
+};
+template <class T>
+concept PeFloatSelfOperation = requires(T v) {
+  v += 1;
+  v -= 1;
+  v *= 1;
+  v /= 1;
+  v += 1LL;
+  v -= 1LL;
+  v *= 1LL;
+  v /= 1LL;
+#if PE_HAS_INT128
+  v += (int128)1;
+  v -= (int128)1;
+  v *= (int128)1;
+  v /= (int128)1;
+#endif
+  v += MpInteger(1);
+  v -= MpInteger(1);
+  v *= MpInteger(1);
+  v /= MpInteger(1);
+  v += 1.;
+  v -= 1.;
+  v *= 1.;
+  v /= 1.;
+  v += (long double)1.;
+  v -= (long double)1.;
+  v *= (long double)1.;
+  v /= (long double)1.;
+  v += v;
+  v -= v;
+  v *= v;
+  v /= v;
+  ++v;
+  --v;
+  v++;
+  v--;
+};
+template <class T>
+concept PeFloat = requires(T v) {
+  requires PeFloatArithmeticOperation<T>;
+  requires PeFloatSelfOperation<T>;
+  requires PeComparable<T>;
+};
+#endif
+
+class Mpf {
+ public:
+  static void SetDefaultPrec(int n) { mpf_set_default_prec(n); }
+
+  static int GetDefaultPrec() { return mpf_get_default_prec(); }
+
+  Mpf() { mpf_init_set_si(f, 0); }
+
+  Mpf(bool t) : Mpf(static_cast<long>(t ? 1 : 0)) {}
+
+  Mpf(int t) : Mpf(static_cast<long>(t)) {}
+
+  Mpf(long t) { mpf_init_set_si(f, t); }
+
+  Mpf(double t) { mpf_init_set_d(f, t); }
+
+  Mpf(long double t) : Mpf(pe::to_string(t)) {}
+
+  Mpf(const std::string& s) : Mpf(s.c_str()) {}
+
+  Mpf(const char* s) { mpf_init_set_str(f, s, 10); }
+
+  Mpf(const mpf_t o) { mpf_init_set(f, o); }
+
+  Mpf(const MpInteger& o) {
+    mpf_init(f);
+    mpf_set_z(f, o.mpz());
+  }
+
+  template <typename T, typename TT = REQUIRES((is_native_integer<T>::value &&
+                                                !std::is_same<T, bool>::value))
+                            RETURN(void)>
+  Mpf(T value) : Mpf(MpInteger(value)) {}
+
+  Mpf(const Mpf& o) { mpf_init_set(f, o.f); }
+
+  Mpf(Mpf&& o) noexcept {
+    f[0]._mp_d = nullptr;
+    mpf_swap(f, o.f);
+  }
+
+  ~Mpf() {
+    if (f[0]._mp_d) {
+      mpf_clear(f);
+    }
+  }
+
+  Mpf& operator=(const Mpf& o) {
+    mpf_set(f, o.f);
+    return *this;
+  }
+
+  Mpf& operator=(Mpf&& o) noexcept {
+    mpf_swap(f, o.f);
+    return *this;
+  }
+
+  template <typename T,
+            typename TT = REQUIRES((is_native_integer<T>::value)) RETURN(T)>
+  Mpf& operator=(T value) {
+    mpf_set_z(f, MpInteger(value).mpz());
+    return *this;
+  }
+
+ public:
+  Mpf& operator+=(const Mpf& a) {
+    mpf_add(f, f, a.f);
+    return *this;
+  }
+
+  Mpf& operator-=(const Mpf& a) {
+    mpf_sub(f, f, a.f);
+    return *this;
+  }
+
+  Mpf& operator*=(const Mpf& a) {
+    mpf_mul(f, f, a.f);
+    return *this;
+  }
+
+  Mpf& operator/=(const Mpf& a) {
+    mpf_div(f, f, a.f);
+    return *this;
+  }
+
+  Mpf& operator++() {
+    *this += 1;
+    return *this;
+  }
+
+  Mpf operator++(int) {
+    Mpf ret(*this);
+    mpf_add_ui(f, f, 1);
+    return ret;
+  }
+
+  Mpf& operator--() {
+    *this -= 1;
+    return *this;
+  }
+
+  const Mpf& operator+() const { return *this; }
+
+  const Mpf operator-() const {
+    Mpf t;
+    mpf_neg(t.f, f);
+    return t;
+  }
+
+  Mpf operator--(int) {
+    Mpf ret(*this);
+    mpf_sub_ui(f, f, 1);
+    return ret;
+  }
+
+  Mpf Sqrt() const {
+    Mpf t;
+    mpf_sqrt(t.f, f);
+    return t;
+  }
+
+  Mpf Power(unsigned long p) const {
+    Mpf t;
+    mpf_pow_ui(t.f, f, p);
+    return t;
+  }
+
+  Mpf Abs() const {
+    Mpf t;
+    mpf_abs(t.f, f);
+    return t;
+  }
+
+  Mpf Ceil() const {
+    Mpf t;
+    mpf_ceil(t.f, f);
+    return t;
+  }
+
+  Mpf Floor() const {
+    Mpf t;
+    mpf_floor(t.f, f);
+    return t;
+  }
+
+  Mpf Trunc() const {
+    Mpf t;
+    mpf_trunc(t.f, f);
+    return t;
+  }
+
+  int Sgn() const { return mpf_sgn(f); }
+
+  void SetPrec(int n) { mpf_set_prec(f, n); }
+
+  int Prec() const { return mpf_get_prec(f); }
+
+ public:
+  double ToDouble() const { return mpf_get_d(f); }
+
+  std::string ToString(int dig = 20) const {
+    const int s = Sgn();
+    if (s == 0) {
+      return "0";
+    }
+    // dig < 1020
+    mp_exp_t e;
+    char buff[1024];
+    mpf_get_str(buff, &e, 10, dig, f);
+    const int offset = buff[0] == '-' ? 2 : 1;
+    std::string temp(buff);
+    std::string t =
+        temp.substr(0, offset) + std::string(".") + temp.substr(offset);
+    if (e - 1 != 0) t = t + "e" + pe::ToString(e - 1);
+    return t;
+  }
+
+  std::string to_string(int dig = 20) const { return ToString(dig); }
+
+  long double ToLongDouble() const {
+    std::string t = ToString(50);
+    long double result;
+    sscanf(t.c_str(), "%Lf", &result);
+    return result;
+  }
+
+  MpInteger ToMpInteger() const {
+    MpInteger z;
+    mpz_set_f(z.mpz(), mpf());
+    return z;
+  }
+
+  template <typename T>
+  T ToInt() const {
+    return ToMpInteger().ToInt<T>();
+  }
+
+  __mpf_struct* mpf() { return f; }
+  const __mpf_struct* mpf() const { return f; }
+
+  mpf_t f;
+};
+
+SL Mpf operator+(const Mpf& a, const Mpf& b) {
+  Mpf t;
+  mpf_add(t.f, a.f, b.f);
+  return t;
+}
+
+SL Mpf operator-(const Mpf& a, const Mpf& b) {
+  Mpf t;
+  mpf_sub(t.f, a.f, b.f);
+  return t;
+}
+
+SL Mpf operator*(const Mpf& a, const Mpf& b) {
+  Mpf t;
+  mpf_mul(t.f, a.f, b.f);
+  return t;
+}
+
+SL Mpf operator/(const Mpf& a, const Mpf& b) {
+  Mpf t;
+  mpf_div(t.f, a.f, b.f);
+  return t;
+}
+
+SL int compare(const Mpf& a, const Mpf& b) { return mpf_cmp(a.f, b.f); }
+
+#if PE_HAS_CPP20
+SL int operator<=>(const Mpf& a, const Mpf& b) { return mpf_cmp(a.f, b.f); }
+
+SL int operator==(const Mpf& a, const Mpf& b) { return (a <=> b) == 0; }
+
+SL int operator!=(const Mpf& a, const Mpf& b) { return (a <=> b) != 0; }
+#else
+SL int operator<(const Mpf& a, const Mpf& b) { return compare(a, b) < 0; }
+
+SL int operator<=(const Mpf& a, const Mpf& b) { return compare(a, b) <= 0; }
+
+SL int operator>(const Mpf& a, const Mpf& b) { return compare(a, b) > 0; }
+
+SL int operator>=(const Mpf& a, const Mpf& b) { return compare(a, b) >= 0; }
+
+SL int operator==(const Mpf& a, const Mpf& b) { return compare(a, b) == 0; }
+
+SL int operator!=(const Mpf& a, const Mpf& b) { return compare(a, b) != 0; }
+#endif
+
+SL std::string ToString(const Mpf& f, int dig = 20) { return f.ToString(dig); }
+
+SL std::ostream& operator<<(std::ostream& o, const Mpf& f) {
+  return o << f.ToString(20);
+}
+
+SL Mpf IsZero(const Mpf& f) { return f.Sgn() == 0; }
+
+SL Mpf IntSign(const Mpf& f) { return f.Sgn(); }
+
+SL Mpf Abs(const Mpf& f) { return f.Abs(); }
+
+SL Mpf FAbs(const Mpf& f) { return f.Abs(); }
+
+SL Mpf Power(const Mpf& f, unsigned long p) { return f.Power(p); }
+
+SL Mpf Ceil(const Mpf& f) { return f.Ceil(); }
+
+SL Mpf Floor(const Mpf& f) { return f.Floor(); }
+
+SL Mpf Trunc(const Mpf& f) { return f.Trunc(); }
+
+SL Mpf abs(const Mpf& f) { return f.Abs(); }
+
+SL Mpf fabs(const Mpf& f) { return f.Abs(); }
+
+SL Mpf ceil(const Mpf& f) { return f.Ceil(); }
+
+SL Mpf floor(const Mpf& f) { return f.Floor(); }
+
+SL Mpf trunc(const Mpf& f) { return f.Trunc(); }
+
+SL std::string to_string(const Mpf& f, int dig = 20) { return f.ToString(dig); }
+
+MpInteger& MpInteger::operator=(const Mpf& o) {
+  mpz_set_f(z, o.mpf());
+  return *this;
+}
+#if PE_HAS_CPP20
+static_assert(PeFloat<Mpf>);
+#endif
+}  // namespace pe
+#else
+#define HAS_MPF 0
+#endif
+
+#endif

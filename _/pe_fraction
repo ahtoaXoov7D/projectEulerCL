@@ -1,0 +1,259 @@
+#ifndef PE_FRACTION_
+#define PE_FRACTION_
+
+#include "pe_base"
+#include "pe_int128"
+#include "pe_type_traits"
+#include "pe_mod"
+#include "pe_nt"
+
+namespace pe {
+#if PE_HAS_CPP20
+
+#define PE_FRACTION_ARTHMETIC_OPERATION_IMPL(type) \
+  v + static_cast<type>(1);                        \
+  v - static_cast<type>(1);                        \
+  v* static_cast<type>(1);                         \
+  v / static_cast<type>(1);                        \
+  static_cast<type>(1) + v;                        \
+  static_cast<type>(1) - v;                        \
+  static_cast<type>(1) * v;                        \
+  static_cast<type>(1) / v
+
+#define PE_FRACTION_SELF_ARTHMETIC_OPERATION_IMPL(type) \
+  v += static_cast<type>(1);                            \
+  v -= static_cast<type>(1);                            \
+  v *= static_cast<type>(1);                            \
+  v /= static_cast<type>(1)
+
+template <class T>
+concept PeFractionArithmeticOperation = requires(T v) {
+  PE_FRACTION_ARTHMETIC_OPERATION_IMPL(char);
+  PE_FRACTION_ARTHMETIC_OPERATION_IMPL(unsigned char);
+  PE_FRACTION_ARTHMETIC_OPERATION_IMPL(signed char);
+  PE_FRACTION_ARTHMETIC_OPERATION_IMPL(int);
+  PE_FRACTION_ARTHMETIC_OPERATION_IMPL(unsigned int);
+  PE_FRACTION_ARTHMETIC_OPERATION_IMPL(signed int);
+  PE_FRACTION_ARTHMETIC_OPERATION_IMPL(short int);
+  PE_FRACTION_ARTHMETIC_OPERATION_IMPL(unsigned short int);
+  PE_FRACTION_ARTHMETIC_OPERATION_IMPL(long int);
+  PE_FRACTION_ARTHMETIC_OPERATION_IMPL(signed long int);
+  PE_FRACTION_ARTHMETIC_OPERATION_IMPL(unsigned long int);
+  PE_FRACTION_ARTHMETIC_OPERATION_IMPL(long long int);
+  PE_FRACTION_ARTHMETIC_OPERATION_IMPL(signed long long int);
+  PE_FRACTION_ARTHMETIC_OPERATION_IMPL(unsigned long long int);
+#if PE_HAS_INT128
+  PE_FRACTION_ARTHMETIC_OPERATION_IMPL(int128);
+  PE_FRACTION_ARTHMETIC_OPERATION_IMPL(uint128);
+#endif
+  v + v;
+  v - v;
+  v* v;
+  v / v;
+};
+template <class T>
+concept PeFractionSelfOperation = requires(T v) {
+  PE_FRACTION_SELF_ARTHMETIC_OPERATION_IMPL(char);
+  PE_FRACTION_SELF_ARTHMETIC_OPERATION_IMPL(unsigned char);
+  PE_FRACTION_SELF_ARTHMETIC_OPERATION_IMPL(signed char);
+  PE_FRACTION_SELF_ARTHMETIC_OPERATION_IMPL(int);
+  PE_FRACTION_SELF_ARTHMETIC_OPERATION_IMPL(unsigned int);
+  PE_FRACTION_SELF_ARTHMETIC_OPERATION_IMPL(signed int);
+  PE_FRACTION_SELF_ARTHMETIC_OPERATION_IMPL(short int);
+  PE_FRACTION_SELF_ARTHMETIC_OPERATION_IMPL(unsigned short int);
+  PE_FRACTION_SELF_ARTHMETIC_OPERATION_IMPL(long int);
+  PE_FRACTION_SELF_ARTHMETIC_OPERATION_IMPL(signed long int);
+  PE_FRACTION_SELF_ARTHMETIC_OPERATION_IMPL(unsigned long int);
+  PE_FRACTION_SELF_ARTHMETIC_OPERATION_IMPL(long long int);
+  PE_FRACTION_SELF_ARTHMETIC_OPERATION_IMPL(signed long long int);
+  PE_FRACTION_SELF_ARTHMETIC_OPERATION_IMPL(unsigned long long int);
+#if PE_HAS_INT128
+  PE_FRACTION_SELF_ARTHMETIC_OPERATION_IMPL(int128);
+  PE_FRACTION_SELF_ARTHMETIC_OPERATION_IMPL(uint128);
+#endif
+  v += v;
+  v -= v;
+  v *= v;
+  v /= v;
+  ++v;
+  --v;
+  v++;
+  v--;
+  +v;
+  -v;
+};
+template <class T>
+concept PeFraction = requires(T v) {
+  requires PeFractionArithmeticOperation<T>;
+  requires PeFractionSelfOperation<T>;
+  requires PeComparable<T>;
+};
+#undef PE_FRACTION_ARTHMETIC_OPERATION_IMPL
+#undef PE_FRACTION_SELF_ARTHMETIC_OPERATION_IMPL
+#endif
+
+// Forward declaration of gbi version functions.
+template <typename GBI>
+SL REQUIRES((is_gbi<GBI>::value)) RETURN(GBI) Gcd(GBI m, GBI n);
+
+template <typename GBI>
+SL REQUIRES((is_gbi<GBI>::value)) RETURN(GBI) Abs(const GBI& n);
+
+template <typename T>
+struct Fraction {
+  Fraction(const T& u = 0, const T& v = 1) : a(u), b(v) {
+    if (b != 1 && b != -1) {
+      T d = Gcd(Abs(a), Abs(b));
+      if (d > 1) a /= d, b /= d;
+    }
+    if (b < 0) b = -b, a = -a;
+  }
+  template <typename U>
+  Fraction(const U& u = 0, const U& v = 1) : Fraction(T(u), T(v)) {}
+  Fraction(const Fraction& f) {
+    a = f.a;
+    b = f.b;
+  }
+  Fraction(Fraction&& f) noexcept {
+    a = std::move(f.a);
+    b = std::move(f.b);
+  }
+  Fraction& operator=(const Fraction& o) {
+    a = o.a;
+    b = o.b;
+    return *this;
+  }
+  Fraction& operator=(Fraction&& o) noexcept {
+    a = std::move(o.a);
+    b = std::move(o.b);
+    return *this;
+  }
+#if PE_HAS_CPP20
+  int operator<=>(const Fraction& o) const {
+    auto t = a * o.b - b * o.a;
+    return t < 0 ? -1 : t > 0;
+  }
+  int operator==(const Fraction& o) const {
+    return (this->operator<=>(o)) == 0;
+  }
+  int operator!=(const Fraction& o) const {
+    return (this->operator<=>(o)) != 0;
+  }
+#else
+  int operator<(const Fraction& o) const { return a * o.b < b * o.a; }
+  int operator<=(const Fraction& o) const { return a * o.b <= b * o.a; }
+  int operator>(const Fraction& o) const { return a * o.b > b * o.a; }
+  int operator>=(const Fraction& o) const { return a * o.b >= b * o.a; }
+  int operator==(const Fraction& o) const { return a * o.b == b * o.a; }
+  int operator!=(const Fraction& o) const { return a * o.b != b * o.a; }
+#endif
+  Fraction& operator+=(const Fraction& o) {
+    return *this = Fraction(a * o.b + o.a * b, b * o.b);
+  }
+  Fraction& operator-=(const Fraction& o) {
+    return *this = Fraction(a * o.b - o.a * b, b * o.b);
+  }
+  Fraction& operator*=(const Fraction& o) {
+    return *this = Fraction(a * o.a, b * o.b);
+  }
+  Fraction& operator/=(const Fraction& o) {
+    return *this = Fraction(a * o.b, b * o.a);
+  }
+  Fraction& operator++() {
+    *this += 1;
+    return *this;
+  }
+  Fraction operator++(int) {
+    Fraction ret(*this);
+    *this += 1;
+    return ret;
+  }
+  Fraction& operator--() {
+    *this -= 1;
+    return *this;
+  }
+  Fraction operator--(int) {
+    Fraction ret(*this);
+    *this -= 1;
+    return ret;
+  }
+  double ToDouble() { return 1. * ToFloat<double>(a) / ToFloat<double>(b); }
+  long double ToLongDouble() {
+    return static_cast<long double>(1.) * ToFloat<long double>(a) /
+           ToFloat<long double>(b);
+  }
+  T a, b;
+};
+
+template <typename T>
+Fraction<T> operator+(const Fraction<T>& f) {
+  return f;
+}
+
+template <typename T>
+Fraction<T> operator-(const Fraction<T>& f) {
+  return Fraction<T>(-f.a, f.b);
+}
+
+template <typename T>
+Fraction<T> operator+(const Fraction<T>& l, const Fraction<T>& r) {
+  return Fraction(l.a * r.b + r.a * l.b, l.b * r.b);
+}
+template <typename T, typename U>
+Fraction<T> operator+(const Fraction<T>& l, const U& r) {
+  return l + Fraction<T>(r);
+}
+template <typename T, typename U>
+Fraction<T> operator+(const U& l, const Fraction<T>& r) {
+  return Fraction<T>(l) + r;
+}
+template <typename T>
+Fraction<T> operator-(const Fraction<T>& l, const Fraction<T>& r) {
+  return Fraction(l.a * r.b - r.a * l.b, l.b * r.b);
+}
+template <typename T, typename U>
+Fraction<T> operator-(const Fraction<T>& l, const U& r) {
+  return l - Fraction<T>(r);
+}
+template <typename T, typename U>
+Fraction<T> operator-(const U& l, const Fraction<T>& r) {
+  return Fraction<T>(l) - r;
+}
+template <typename T>
+Fraction<T> operator*(const Fraction<T>& l, const Fraction<T>& r) {
+  return Fraction(l.a * r.a, l.b * r.b);
+}
+template <typename T, typename U>
+Fraction<T> operator*(const Fraction<T>& l, const U& r) {
+  return l * Fraction<T>(r);
+}
+template <typename T, typename U>
+Fraction<T> operator*(const U& l, const Fraction<T>& r) {
+  return Fraction<T>(l) * r;
+}
+template <typename T>
+Fraction<T> operator/(const Fraction<T>& l, const Fraction<T>& r) {
+  return Fraction(l.a * r.b, l.b * r.a);
+}
+template <typename T, typename U>
+Fraction<T> operator/(const Fraction<T>& l, const U& r) {
+  return l / Fraction<T>(r);
+}
+template <typename T, typename U>
+Fraction<T> operator/(const U& l, const Fraction<T>& r) {
+  return Fraction<T>(l) / r;
+}
+
+template <typename T>
+std::ostream& operator<<(std::ostream& o, const Fraction<T>& f) {
+  return o << f.a << "/" << f.b;
+}
+
+#if PE_HAS_CPP20
+static_assert(PeFraction<Fraction<int64>>);
+#if PE_HAS_INT128
+static_assert(PeFraction<Fraction<int128>>);
+#endif
+#endif
+}  // namespace pe
+#endif

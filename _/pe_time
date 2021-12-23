@@ -1,0 +1,87 @@
+#ifndef PE_TIME_
+#define PE_TIME_
+
+#include "pe_base"
+
+namespace pe {
+using pe_clock_t = std::chrono::high_resolution_clock;
+using time_point_t = pe_clock_t::time_point;
+using duration_t = pe_clock_t::duration;
+using period_t = pe_clock_t::period;
+
+static const int64 MILLI_SEC_CLOCKS = period_t::den / std::milli::den;
+static const int64 SEC_CLOCKS = period_t::den;
+static const int64 MIN_CLOCKS = SEC_CLOCKS * 60;
+static const int64 HOUR_CLOCKS = MIN_CLOCKS * 60;
+static const int64 DAY_CLOCKS = HOUR_CLOCKS * 24;
+
+class TimeDelta {
+ public:
+  TimeDelta(duration_t duration = duration_t::zero()) : duration_(duration) {}
+
+  int64 NativeTime() const { return duration_.count(); }
+  double ToSeconds() const { return 1. * duration_.count() / SEC_CLOCKS; }
+  double ToMinutes() const { return 1. * duration_.count() / MIN_CLOCKS; }
+  double ToHours() const { return 1. * duration_.count() / HOUR_CLOCKS; }
+  double ToDays() const { return 1. * duration_.count() / DAY_CLOCKS; }
+  std::string Format() const {
+    char temp[128];
+    const int64 nano_seconds = duration_.count();
+    const int64 day = nano_seconds / DAY_CLOCKS;
+    const int hour = static_cast<int>(nano_seconds % DAY_CLOCKS / HOUR_CLOCKS);
+    const int min = static_cast<int>(nano_seconds % HOUR_CLOCKS / MIN_CLOCKS);
+    const int sec = static_cast<int>(nano_seconds % MIN_CLOCKS / SEC_CLOCKS);
+    const int msec =
+        static_cast<int>(nano_seconds % SEC_CLOCKS / MILLI_SEC_CLOCKS);
+    sprintf(temp, "%I64d:%02d:%02d:%02d.%03d", day, hour, min, sec, msec);
+    return temp;
+  }
+
+  static TimeDelta FromMilliSeconds(int64 t) {
+    return duration_t(t * MILLI_SEC_CLOCKS);
+  }
+  static TimeDelta FromSeconds(int64 t) { return duration_t(t * SEC_CLOCKS); }
+  static TimeDelta FromMinutes(int64 t) { return duration_t(t * MIN_CLOCKS); }
+  static TimeDelta FromHours(int64 t) { return duration_t(t * HOUR_CLOCKS); }
+  static TimeDelta FromDays(int64 t) { return duration_t(t * DAY_CLOCKS); }
+
+  bool operator>(const TimeDelta& o) const { return duration_ > o.duration_; }
+  bool operator>=(const TimeDelta& o) const { return duration_ >= o.duration_; }
+  bool operator==(const TimeDelta& o) const { return duration_ == o.duration_; }
+  bool operator<(const TimeDelta& o) const { return duration_ < o.duration_; }
+  bool operator<=(const TimeDelta& o) const { return duration_ <= o.duration_; }
+
+ private:
+  duration_t duration_;
+};
+
+class TimeRecorder {
+ public:
+  TimeRecorder() : last_time_(pe_clock_t::now()) {}
+
+  int64 Record() {
+    last_time_ = pe_clock_t::now();
+    return last_time_.time_since_epoch().count();
+  }
+
+  TimeDelta Elapsed() const { return pe_clock_t::now() - last_time_; }
+
+ private:
+  time_point_t last_time_;
+};
+
+class TimeUsage {
+ public:
+  ~TimeUsage() {
+    fprintf(stderr, "time usage: %s\n", tr_.Elapsed().Format().c_str());
+  }
+
+ private:
+  TimeRecorder tr_;
+};
+
+#ifndef PE_TEST_MODE
+static TimeUsage __time_usage;
+#endif
+}  // namespace pe
+#endif

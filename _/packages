@@ -1,0 +1,26 @@
+# Meteor packages used by this project, one per line.
+#
+# 'meteor add' and 'meteor remove' will edit this file for you,
+# but you can also edit it by hand.
+
+standard-app-packages
+coffeescript
+accounts-password
+less
+iron:router
+matb33:collection-hooks
+aldeed:autoform
+aldeed:collection2
+meteorhacks:kadira
+multiply:iron-router-progress
+iron:dynamic-template
+chuangbo:marked
+kenlimmj:hljs@=1.0.2
+
+materialize:materialize
+natestrauser:font-awesome
+gildaspk:autoform-materialize
+useraccounts:materialize
+zimme:iron-router-active
+reactive-var
+momentjs:moment

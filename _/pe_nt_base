@@ -1,0 +1,848 @@
+#ifndef PE_NT_BASE_
+#define PE_NT_BASE_
+
+#include "pe_base"
+#include "pe_int128"
+#include "pe_mod"
+#include "pe_type_traits"
+#include "pe_range"
+
+namespace pe {
+// About primes
+static int64 maxp;
+static int64 maxp2;
+static int pcnt;
+static int* pmask = nullptr;
+static int* plist = nullptr;
+static int* phi = nullptr;
+static int* mu = nullptr;
+static int* rad = nullptr;
+
+SL void INIT_MAXP(int64 v) {
+  maxp = v;
+  maxp2 = maxp * maxp;
+  assert(maxp >= 100000);
+  assert(maxp <= INT_MAX);
+}
+
+// Prime pi
+// http://oeis.org/A006880
+// https://en.wikipedia.org/wiki/Prime-counting_function
+// More results can be found here
+// http://sweet.ua.pt/tos/primes.html
+// http://numbers.computation.free.fr/Constants/Primes/Pix/resultstable.php
+// http://www.primefan.ru/stuff/primes/table.html
+// http://www.primefan.ru/stuff/primes/17(12)18.txt
+// http://www.primefan.ru/stuff/primes/17(13)18.txt
+// http://www.primefan.ru/stuff/primes/17(14)18.txt
+// A fast implementation:
+// https://github.com/kimwalisch/primecount
+constexpr int64 pmpi[] = {
+    0LL,
+    4LL,                    // 10
+    25LL,                   // 100
+    168LL,                  // 1000
+    1229LL,                 // 1e4
+    9592LL,                 // 1e5
+    78498LL,                // 1e6
+    664579LL,               // 1e7
+    5761455LL,              // 1e8
+    50847534LL,             // 1e9
+    455052511LL,            // 1e10
+    4118054813LL,           // 1e11
+    37607912018LL,          // 1e12
+    346065536839LL,         // 1e13
+    3204941750802LL,        // 1e14
+    29844570422669LL,       // 1e15
+    279238341033925LL,      // 1e16
+    2623557157654233LL,     // 1e17
+    24739954287740860LL,    // 1e18
+    234057667276344607LL,   // 1e19
+    2220819602560918840LL,  // 1e20
+};
+
+SL int64 EstimatePmpi(int64 n) {
+  if (n <= 1) return 0;
+  auto ret = static_cast<int64>(1. * n / log(1. * n));
+  return std::max(ret, static_cast<int64>(1LL));
+}
+
+template <int d1, int d2>
+SL void InitPmaskPlist(int (&pmask)[d1], int (&plist)[d2]) {
+  (void)pmask;
+  (void)plist;
+}
+
+SL void InitPmaskPlist(int*& pmask, int*& plist) {
+  pmask = new int[maxp + 1];
+  int64 size = std::max(static_cast<int64>((EstimatePmpi(maxp + 1) + 1) * 1.1),
+                        static_cast<int64>(100000LL));
+  plist = new int[size];
+}
+
+SL void DeinitPrimes() {
+  pcnt = 0;
+  maxp2 = maxp = 0;
+  if (pmask) {
+    delete[] pmask;
+    pmask = nullptr;
+  }
+  if (plist) {
+    delete[] plist;
+    plist = nullptr;
+  }
+  if (phi) {
+    delete[] phi;
+    phi = nullptr;
+  }
+  if (mu) {
+    delete[] mu;
+    mu = nullptr;
+  }
+  if (rad) {
+    delete[] rad;
+    rad = nullptr;
+  }
+}
+
+SL void InitPrimes() {
+  if (maxp == 0) {
+    INIT_MAXP(1000000);
+  }
+
+  InitPmaskPlist(pmask, plist);
+
+  pcnt = 0;
+  for (int i = 1; i <= maxp; ++i) pmask[i] = i;
+  for (int i = 2; i <= maxp; ++i) {
+    if (pmask[i] == i) {
+      plist[pcnt++] = i;
+    }
+    for (int j = 0; j < pcnt; ++j) {
+      const int64 t = static_cast<int64>(plist[j]) * i;
+      if (t > maxp) break;
+      pmask[t] = plist[j];
+      if (i % plist[j] == 0) {
+        break;
+      }
+    }
+  }
+}
+
+SL void InitPrimes(int cal_phi, int cal_mu, int cal_rad) {
+  if (maxp == 0) {
+    INIT_MAXP(1000000);
+  }
+
+  InitPmaskPlist(pmask, plist);
+
+  pcnt = 0;
+  if (cal_phi) phi = new int[maxp + 1];
+  if (cal_mu) mu = new int[maxp + 1];
+  if (cal_rad) rad = new int[maxp + 1];
+
+  for (int i = 1; i <= maxp; ++i) pmask[i] = i;
+  if (phi) phi[0] = 0, phi[1] = 1;
+  if (mu) mu[0] = 0, mu[1] = 1;
+  if (rad) rad[0] = 0, rad[1] = 1;
+
+  for (int i = 2; i <= maxp; ++i) {
+    if (pmask[i] == i) {
+      if (mu) mu[i] = -1;
+      if (phi) phi[i] = i - 1;
+      if (rad) rad[i] = i;
+      plist[pcnt++] = i;
+    }
+    for (int j = 0; j < pcnt; ++j) {
+      const int64 t = static_cast<int64>(plist[j]) * i;
+      if (t > maxp) break;
+      pmask[t] = plist[j];
+      if (i % plist[j] == 0) {
+        if (mu) mu[t] = 0;
+        if (phi) phi[t] = phi[i] * plist[j];
+        if (rad) rad[t] = 0;
+        break;
+      } else {
+        if (mu) mu[t] = -mu[i];
+        if (phi) phi[t] = phi[i] * (plist[j] - 1);
+        if (rad) rad[t] = rad[i] * plist[j];
+      }
+    }
+  }
+}
+
+SL void FactorizeByPmask(int64 n, std::vector<std::pair<int64, int>>& ret) {
+  while (n != 1) {
+    int now = pmask[n];
+    int c = 0;
+    while (n % now == 0) n /= now, ++c;
+    if (c) ret.emplace_back(static_cast<int64>(now), c);
+  }
+}
+
+SL std::vector<std::pair<int64, int>> Factorize(int64 n) {
+  std::vector<std::pair<int64, int>> ret;
+  if (n <= 1) {
+    return ret;
+  }
+
+  for (int i = 0; i < pcnt; ++i) {
+    if (n <= maxp) {
+      FactorizeByPmask(n, ret);
+      return ret;
+    }
+    const int64 p = plist[i];
+    const int64 test = p * p;
+    if (test > n) break;
+    int c = 0;
+    while (n % p == 0) n /= p, ++c;
+    if (c) ret.emplace_back(p, c);
+  }
+  if (n != 1) ret.emplace_back(n, 1);
+  return ret;
+}
+
+SL std::vector<std::pair<int64, int>> Factorize(
+    int64 n, const std::vector<int64>& hint) {
+  std::vector<std::pair<int64, int>> ret;
+  if (n <= 1) {
+    return ret;
+  }
+
+  for (auto& h : hint) {
+    for (auto iter : Factorize(h)) {
+      const int64 p = iter.first;
+      int c = 0;
+      while (n % p == 0) n /= p, ++c;
+      if (c) ret.emplace_back(p, c);
+    }
+  }
+
+  for (int i = 0; i < pcnt; ++i) {
+    if (n <= maxp) {
+      FactorizeByPmask(n, ret);
+      return ret;
+    }
+    const int64 p = plist[i];
+    const int64 test = p * p;
+    if (test > n) break;
+    int c = 0;
+    while (n % p == 0) n /= p, ++c;
+    if (c) ret.emplace_back(p, c);
+  }
+  if (n != 1) ret.emplace_back(n, 1);
+  return ret;
+}
+
+SL int IsPrime(int64 n) {
+  if (n <= 1) return 0;
+  if (n == 2) return 1;
+  if ((n & 1) == 0) return 0;
+  if (n <= maxp) return pmask[n] == n;
+  PE_ASSERT(n <= maxp2);
+  for (int i = 0; i < pcnt; ++i) {
+    const int64 p = plist[i];
+    const int64 test = p * p;
+    if (test > n) break;
+    if (n % p == 0) return 0;
+  }
+  return 1;
+}
+
+SL std::ostream& operator<<(std::ostream& o,
+                            const std::vector<std::pair<int64, int>>& v) {
+  const auto n = static_cast<int64>(v.size());
+  for (int64 i = 0; i < n; ++i) {
+    o << v[i].first;
+    if (v[i].second > 1) o << "^" << v[i].second;
+    if (i < n - 1) o << " * ";
+  }
+  return o;
+}
+
+// prime test for n <= 2^63 - 1
+// http://oeis.org/A014233
+constexpr int64 sopp[] = {
+    2047LL,                 // 2
+    1373653LL,              // 3
+    25326001LL,             // 5
+    3215031751LL,           // 7
+    2152302898747LL,        // 11
+    3474749660383LL,        // 13
+    341550071728321LL,      // 17
+    341550071728321LL,      // 19
+    3825123056546413051LL,  // 23
+    3825123056546413051LL,  // 29
+    3825123056546413051LL,  // 31
+                            // bigger than 2^64             // 37
+                            // 2^63 = 9223372036854775808   //
+};
+constexpr int64 sopp_size = sizeof(sopp) / sizeof(sopp[0]);
+
+namespace pe_internal {
+SL int MrTestImpl(int s, int64 t, int64 n, int x) {
+  // PE_ASSERT((n&1) == 0)
+
+  if (n <= PE_SOI63) {
+    t = PowerMod<int64, int64, int64>(x, t, n);
+    if (t == 1 || t == n - 1) return 1;
+
+    for (int i = 1; i < s; ++i) {
+      t = MulMod(t, t, n);
+      if (t == n - 1) return 1;
+    }
+  } else {
+    t = PowerModEx(x, t, n);
+    if (t == 1 || t == n - 1) return 1;
+
+    for (int i = 1; i < s; ++i) {
+      t = MulModEx(t, t, n);
+      if (t == n - 1) return 1;
+    }
+  }
+  return 0;
+}
+}  // namespace pe_internal
+
+SL int MrTest(int64 n, int x) {
+  if (n <= 1) return 0;
+  if ((n & 1) == 0) return 0;
+
+  int s = 0;
+  int64 t = n - 1;
+  while ((t & 1) == 0) ++s, t >>= 1;
+
+  return pe_internal::MrTestImpl(s, t, n, x);
+}
+
+SL int IsPrimeEx(int64 n) {
+  if (n <= 1) return 0;
+  if (n == 2) return 1;
+  if ((n & 1) == 0) return 0;
+  if (n <= maxp) return pmask[n] == n;
+
+  for (int i = 1; i < 20; ++i) {
+    if (n % plist[i] == 0) return 0;
+  }
+
+  int s = 0;
+  int64 t = n - 1;
+  while ((t & 1) == 0) ++s, t >>= 1;
+
+  for (int i = 0; i < sopp_size; ++i) {
+    const int64 val = sopp[i];
+    if (n == val) return 0;
+    if (!pe_internal::MrTestImpl(s, t, n, plist[i])) return 0;
+    if (n < val) break;
+  }
+  return 1;
+}
+
+namespace pe_internal {
+SL std::vector<int64> GetFactorsImpl(
+    const std::vector<std::pair<int64, int>>& f, const int64 maxv) {
+  if (maxv == 0) {
+    return std::vector<int64>();
+  }
+
+  int max_size = 1;
+  for (auto& iter : f) max_size *= iter.second + 1;
+
+  std::vector<int64> result(max_size);
+  result[0] = 1;
+
+  int top = 1;
+  for (auto& iter : f) {
+    const int last = top;
+    const int64 p = iter.first;
+    int64 v = 1;
+    for (int i = 0; i < iter.second; ++i) {
+      v *= p;
+      if (maxv > 0 && v > maxv) break;
+      for (int j = 0; j < last; ++j) {
+        const auto tmp = result[j] * v;
+        if (maxv < 0 || tmp <= maxv) {
+          result[top++] = tmp;
+        }
+      }
+    }
+  }
+
+  result.resize(top);
+  return std::move(result);
+}
+}  // namespace pe_internal
+
+SL std::vector<int64> GetFactors(const std::vector<std::pair<int64, int>>& f,
+                                 int64 maxv = -1) {
+  return pe_internal::GetFactorsImpl(f, maxv);
+}
+
+SL std::vector<int64> GetFactors(int64 value, int64 maxv = -1) {
+  return pe_internal::GetFactorsImpl(Factorize(value), maxv);
+}
+
+SL std::vector<int64> GetPrimeFactors(
+    const std::vector<std::pair<int64, int>>& f) {
+  if (f.size() == 0) {
+    return {};
+  }
+
+  std::vector<int64> ans;
+  ans.reserve(f.size());
+
+  for (auto& iter : f) {
+    ans.push_back(iter.first);
+  }
+  return ans;
+}
+
+SL std::vector<int64> GetPrimeFactors(int64 value) {
+  if (value <= 1) {
+    return {};
+  }
+
+  return GetPrimeFactors(Factorize(value));
+}
+
+namespace pe_internal {
+SL std::vector<int64> GetRadFactorsImpl(
+    const std::vector<std::pair<int64, int>>& f, const int64 maxv) {
+  if (maxv == 0) {
+    return std::vector<int64>();
+  }
+
+  const int max_size = 1 << f.size();
+  std::vector<int64> result(max_size);
+  result[0] = 1;
+
+  int top = 1;
+  for (auto& iter : f) {
+    const int last = top;
+    const int64 p = iter.first;
+    int64 v = 1;
+    for (int i = 0; i < 1; ++i) {
+      v *= p;
+      if (maxv > 0 && v > maxv) break;
+      for (int j = 0; j < last; ++j) {
+        const auto tmp = result[j] * v;
+        if (maxv < 0 || tmp <= maxv) {
+          result[top++] = tmp;
+        }
+      }
+    }
+  }
+
+  result.resize(top);
+  return std::move(result);
+}
+}  // namespace pe_internal
+
+SL std::vector<int64> GetRadFactors(const std::vector<std::pair<int64, int>>& f,
+                                    int64 maxv = -1) {
+  return pe_internal::GetRadFactorsImpl(f, maxv);
+}
+
+SL std::vector<int64> GetRadFactors(int64 value, int64 maxv = -1) {
+  return pe_internal::GetRadFactorsImpl(Factorize(value), maxv);
+}
+
+namespace pe_internal {
+SL std::vector<std::pair<int64, int>> GetRadFactorsWithMuImpl(
+    const std::vector<std::pair<int64, int>>& f, const int64 maxv) {
+  if (maxv == 0) {
+    return std::vector<std::pair<int64, int>>();
+  }
+
+  const int max_size = 1 << f.size();
+  std::vector<std::pair<int64, int>> result(max_size);
+  result[0] = {1LL, 1};
+
+  int top = 1;
+  for (auto& iter : f) {
+    const int last = top;
+    const int64 p = iter.first;
+    int64 v = 1;
+    for (int i = 0; i < 1; ++i) {
+      v *= p;
+      if (maxv > 0 && v > maxv) break;
+      for (int j = 0; j < last; ++j) {
+        const auto tmp = result[j].first * v;
+        const auto mu = -result[j].second;
+        if (maxv < 0 || tmp <= maxv) {
+          result[top++] = {tmp, mu};
+        }
+      }
+    }
+  }
+
+  result.resize(top);
+  return std::move(result);
+}
+}  // namespace pe_internal
+
+SL std::vector<std::pair<int64, int>> GetRadFactorsWithMu(
+    const std::vector<std::pair<int64, int>>& f, int64 maxv = -1) {
+  return pe_internal::GetRadFactorsWithMuImpl(f, maxv);
+}
+
+SL std::vector<std::pair<int64, int>> GetRadFactorsWithMu(int64 value,
+                                                          int64 maxv = -1) {
+  return pe_internal::GetRadFactorsWithMuImpl(Factorize(value), maxv);
+}
+
+SL int64 CalPhi(int64 n, const std::vector<std::pair<int64, int>>& fn) {
+  if (n <= 0) return 0;
+  if (phi && n <= maxp) return phi[n];
+  int64 phi_n = n;
+  for (auto& it : fn) phi_n -= phi_n / it.first;
+  return phi_n;
+}
+
+SL int64 CalPhi(int64 n) {
+  if (n <= 0) return 0;
+  if (phi && n <= maxp) return phi[n];
+  auto fn = Factorize(n);
+  int64 phi_n = n;
+  for (auto& it : fn) phi_n -= phi_n / it.first;
+  return phi_n;
+}
+
+namespace pe_internal {
+SL int64 CalMuImplByPmask(int64 n, int64 v = 1) {
+  while (n != 1) {
+    const int now = pmask[n];
+    int c = 0;
+    while (n % now == 0) n /= now, ++c;
+    if (c > 1) {
+      return 0;
+    } else if (c == 1) {
+      v = -v;
+    }
+  }
+  return v;
+}
+
+SL int64 CalMuImpl(int64 n) {
+  int64 v = 1;
+
+  for (int i = 0; i < pcnt; ++i) {
+    if (n <= maxp) {
+      return CalMuImplByPmask(n, v);
+    }
+    const int64 p = plist[i];
+    const int64 test = p * p;
+    if (test > n) break;
+    int c = 0;
+    while (n % p == 0) n /= p, ++c;
+    if (c > 1) {
+      return 0;
+    } else if (c == 1) {
+      v = -v;
+    }
+  }
+  if (n != 1) v = -v;
+  return v;
+}
+}  // namespace pe_internal
+
+SL int64 CalMu(int64 n) {
+  if (n <= 0) return 0;
+  if (n == 1) return 1;
+  if (mu && n <= maxp) return mu[n];
+  return pe_internal::CalMuImpl(n);
+}
+
+SL int64 CalMu(int64 n, const std::vector<std::pair<int64, int>>& fn) {
+  if (n <= 0) return 0;
+  if (n == 1) return 1;
+  if (mu && n <= maxp) return mu[n];
+  for (auto& iter : fn) {
+    if (iter.second > 0) {
+      return 0;
+    }
+  }
+  return fn.size() & 1 ? -1 : 1;
+}
+
+namespace pe_internal {
+SL int64 CalRadImplByPmask(int64 n, int64 v = 1) {
+  while (n != 1) {
+    const int now = pmask[n];
+    int c = 0;
+    while (n % now == 0) n /= now, ++c;
+    if (c >= 1) v *= now;
+  }
+  return v;
+}
+
+SL int64 CalRadImpl(int64 n) {
+  int64 v = 1;
+
+  for (int i = 0; i < pcnt; ++i) {
+    if (n <= maxp) {
+      return CalRadImplByPmask(n, v);
+    }
+    const int64 p = plist[i];
+    const int64 test = p * p;
+    if (test > n) break;
+    int c = 0;
+    while (n % p == 0) n /= p, ++c;
+    if (c >= 1) v *= p;
+  }
+  if (n != 1) v *= n;
+  return v;
+}
+}  // namespace pe_internal
+
+SL int64 CalRad(int64 n) {
+  if (n <= 0) return 0;
+  if (n == 1) return 1;
+  if (rad && n <= maxp) return rad[n];
+  return pe_internal::CalRadImpl(n);
+}
+
+SL int64 CalRad(int64 n, const std::vector<std::pair<int64, int>>& fn) {
+  if (n <= 0) return 0;
+  if (n == 1) return 1;
+  if (rad && n <= maxp) return rad[n];
+
+  int64 ret = 1;
+  for (auto& iter : fn) {
+    ret *= iter.first;
+  }
+  return ret;
+}
+
+SL int FindPrimeIdx(const std::function<int(int64)>& f) {
+  for (int i = 0; i < pcnt; ++i) {
+    if (f(plist[i])) return i;
+  }
+  return pcnt;
+}
+
+// sg: square greater
+SL int FindPrimeIdxSg(int64 n) {
+  int l = 0, r = pcnt - 1;
+  while (l <= r) {
+    const int mid = (l + r) >> 1;
+    if (static_cast<int64>(plist[mid]) * plist[mid] > n) {
+      r = mid - 1;
+    } else {
+      l = mid + 1;
+    }
+  }
+  return l;
+}
+
+template <typename T = int64>
+struct PrimeEnumeratorPe {
+  PrimeEnumeratorPe(T start, T end = -1)
+      : start_(start <= 1 ? 2 : start), end_(end) {}
+
+  struct Iterator {
+    using reference = T;
+    using value_type = T;
+
+    Iterator(T now, T end) : now_(now), end_(end) {}
+
+    int operator==(const Iterator& o) const { return now_ == o.now_; }
+
+    int operator!=(const Iterator& o) const { return !(this->operator==(o)); }
+
+    T operator*() const { return now_; }
+
+    Iterator& operator++() {
+      if (now_ > 0) {
+        ++now_;
+        SeekNext();
+      }
+      return *this;
+    }
+
+    Iterator operator++(int) {
+      Iterator r{now_, end_};
+      ++*this;
+      return r;
+    }
+
+    void SeekNext() {
+      if (now_ > 0) {
+        if (end_ > 0) {
+          while (now_ <= end_ && !IsPrimeEx(now_)) {
+            now_ += now_ & 1 ? 2 : 1;
+          }
+          if (now_ > end_) {
+            now_ = -1;
+          }
+        } else {
+          while (!IsPrimeEx(now_)) {
+            now_ += now_ & 1 ? 2 : 1;
+          }
+        }
+      }
+    }
+
+   private:
+    T now_;
+    T end_;
+  };
+
+  using iterator = Iterator;
+  using const_iterator = Iterator;
+
+  Iterator begin() const {
+    Iterator ret{start_, end_};
+    ret.SeekNext();
+    return ret;
+  }
+
+  Iterator end() const { return {-1, end_}; }
+
+  ContainerRange<Iterator> ToRange() const {
+    return ContainerRange<Iterator>(begin(), end());
+  }
+
+ private:
+  T start_;
+  T end_;
+};
+
+template <typename T = int64>
+SL std::vector<T> GetPrimesInRangePe(int64 start, int64 end) {
+  if (start <= 1) {
+    start = 2;
+  }
+  if (start > end) {
+    return {};
+  }
+  std::vector<T> result;
+  if (start == 2) {
+    result.emplace_back(2);
+    ++start;
+  }
+  start |= 1;
+  for (int64 p = start; p <= end; p += 2) {
+    if (IsPrimeEx(p)) {
+      result.emplace_back(p);
+    }
+  }
+  return result;
+}
+
+#if ENABLE_PRIME_SIEVE
+
+template <typename T = int64>
+struct PrimeEnumeratorPs {
+  PrimeEnumeratorPs(T start, T end = -1)
+      : start_(start <= 1 ? 2 : start),
+        end_(end),
+        it_(std::max(start_ - 1, 1LL),
+            end < 0 ? primesieve::get_max_stop() : end) {}
+
+  struct Iterator {
+    using reference = T;
+    using value_type = T;
+
+    Iterator(T now, T end, primesieve::iterator* it)
+        : now_(now), end_(end), it_(it) {}
+
+    int operator==(const Iterator& o) const { return now_ == o.now_; }
+
+    int operator!=(const Iterator& o) const { return !(this->operator==(o)); }
+
+    T operator*() const { return now_; }
+
+    Iterator& operator++() {
+      if (now_ > 0) {
+        ++now_;
+        SeekNext();
+      }
+      return *this;
+    }
+
+    Iterator operator++(int) {
+      Iterator r{now_, end_, it_};
+      ++*this;
+      return r;
+    }
+
+    void SeekNext() {
+      if (now_ > 0) {
+        now_ = it_->next_prime();
+        if (end_ > 0 && now_ > end_) {
+          now_ = -1;
+        }
+      }
+    }
+
+   private:
+    T now_;
+    T end_;
+    primesieve::iterator* it_;
+  };
+
+  using iterator = Iterator;
+  using const_iterator = Iterator;
+
+  Iterator begin() const {
+    Iterator ret{start_, end_, const_cast<primesieve::iterator*>(&it_)};
+    ret.SeekNext();
+    return ret;
+  }
+
+  Iterator end() const {
+    return {-1, end_, const_cast<primesieve::iterator*>(&it_)};
+  }
+
+  ContainerRange<Iterator> ToRange() const {
+    return ContainerRange<Iterator>(begin(), end());
+  }
+
+ private:
+  T start_;
+  T end_;
+  primesieve::iterator it_;
+};
+
+template <typename T = int64>
+SL std::vector<T> GetPrimesInRangePs(int64 start, int64 end) {
+  if (start <= 1) {
+    start = 2;
+  }
+  if (start > end) {
+    return {};
+  }
+
+  std::vector<T> result;
+  primesieve::iterator it(std::max(start - 1, 1LL), end);
+  for (auto p = it.next_prime(); p <= end; p = it.next_prime()) {
+    result.emplace_back(p);
+  }
+  return result;
+}
+#endif
+
+#if ENABLE_PRIME_SIEVE
+template <typename T = int64>
+using PrimeEnumerator = PrimeEnumeratorPs<T>;
+
+template <typename T = int64>
+SL std::vector<T> GetPrimesInRange(int64 start, int64 end) {
+  return GetPrimesInRangePs(start, end);
+}
+#else
+template <typename T = int64>
+using PrimeEnumerator = PrimeEnumeratorPe<T>;
+
+template <typename T = int64>
+SL std::vector<T> GetPrimesInRange(int64 start, int64 end) {
+  return GetPrimesInRangePe(start, end);
+}
+#endif
+}  // namespace pe
+// 65701
+#endif
+/*
+
+*/

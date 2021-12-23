@@ -1,0 +1,8 @@
+---
+:id: 231
+:name: The prime factorisation of binomial coefficients
+:url: https://projecteuler.net/problem=231
+:content: "The binomial coefficient <sup>10</sup>C<sub>3</sub> = 120.  \n120 = 2<sup>3</sup>
+  × 3 × 5 = 2 × 2 × 2 × 3 × 5, and 2 + 2 + 2 + 3 + 5 = 14.  \nSo the sum of the terms
+  in the prime factorisation of <sup>10</sup>C<sub>3</sub> is 14.  \n  \nFind the
+  sum of the terms in the prime factorisation of <sup>20000000</sup>C<sub>15000000</sub>.\n\n"

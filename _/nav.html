@@ -1,0 +1,58 @@
+<template name="nav">
+    <ul id="admin-dropdown" class="dropdown-content">
+        <li><a href="{{pathFor 'adminProblems'}}">Problems</a></li>
+        <li><a href="{{pathFor 'adminUsers'}}">Users</a></li>
+        <li><a href="{{pathFor 'settings'}}">Settings</a></li>
+    </ul>
+
+    <nav class="grey darken-4">
+        <div class="container">
+            <div class="nav-wrapper">
+                <a href="{{pathFor 'home'}}" class="brand-logo"><img src="/knowit_symbol_white_rgb.png" alt="Knowit"></a>
+
+                <a href="#" data-activates="mobile-nav" class="button-collapse"><i class="mdi-navigation-menu"></i></a>
+
+                <ul class="right hide-on-med-and-down">
+                    <li><a class="{{isActiveRoute regex='leaderboard'}}" href="{{pathFor 'leaderboard'}}">Leaderboard</a></li>
+                    {{#if currentUser}}
+                        <li><a class="{{isActiveRoute regex='problems'}}" href="{{pathFor 'problems'}}">Problems</a></li>
+                    {{/if}}
+                    {{#if isAdmin}}
+                        <li><a class="dropdown-button" href="#!" data-activates="admin-dropdown">Admin <i class="mdi-navigation-arrow-drop-down right"></i></a></li>
+                    {{/if}}
+                    {{#if currentUser}}
+                        <li><a href="#" class="signOut" title="Logout">Logout</a></li>
+                    {{else}}
+                        <li><a class="{{isActiveRoute regex='atSignIn'}}" href="{{pathFor 'atSignIn'}}">Sign in</a></li>
+                    {{/if}}
+                </ul>
+
+                <ul id="mobile-nav" class="side-nav">
+                    <li class="{{isActiveRoute regex='leaderboard'}}"><a href="{{pathFor 'leaderboard'}}">Leaderboard</a></li>
+                    {{#if currentUser}}
+                        <li class="{{isActiveRoute regex='problems'}}"><a href="{{pathFor 'problems'}}">Problems</a></li>
+                    {{/if}}
+                    {{#if isAdmin}}
+                        <li class="no-padding">
+                            <ul class="collapsible collapsible-accordion">
+                                <li>
+                                    <a class="collapsible-header">Admin<i class="mdi-navigation-arrow-drop-down"></i></a>
+                                    <div class="collapsible-body">
+                                        <li><a href="{{pathFor 'adminProblems'}}">Problems</a></li>
+                                        <li><a href="{{pathFor 'adminUsers'}}">Users</a></li>
+                                        <li><a href="{{pathFor 'settings'}}">Settings</a></li>
+                                    </div>
+                                </li>
+                            </ul>
+                        </li>
+                    {{/if}}
+                    {{#if currentUser}}
+                        <li><a href="#" class="signOut" title="Logout">Logout</a></li>
+                    {{else}}
+                        <li class="{{isActiveRoute regex='atSignIn'}}"><a href="{{pathFor 'atSignIn'}}">Sign in</a></li>
+                    {{/if}}
+                </ul>
+            </div>
+        </div>
+    </nav>
+</template>

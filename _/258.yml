@@ -1,0 +1,12 @@
+---
+:id: 258
+:name: A lagged Fibonacci sequence
+:url: https://projecteuler.net/problem=258
+:content: |+
+  A sequence is defined as:
+
+  - <var>g</var><sub><var>k</var></sub> = 1, for 0 ≤ <var>k</var> ≤ 1999
+  - <var>g</var><sub><var>k</var></sub> = <var>g</var><sub><var>k</var>-2000</sub> + <var>g</var><sub><var>k</var>-1999</sub>, for <var>k</var> ≥ 2000.
+
+  Find <var>g</var><sub><var>k</var></sub> mod 20092010 for <var>k</var> = 10<sup>18</sup>.
+

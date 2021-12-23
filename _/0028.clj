@@ -1,0 +1,1 @@
+(println (time (apply + (reduce (fn [x w] (concat x (take 4 (iterate #(+ %1 w) (+ w (last x)))))) '(1) (take-while #(< % 1001) (iterate #(+ % 2) 2))))))

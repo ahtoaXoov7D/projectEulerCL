@@ -1,0 +1,238 @@
+#ifndef PE_POLY_BASE_NTL_
+#define PE_POLY_BASE_NTL_
+
+#include "pe_base"
+#include "pe_type_traits"
+#include "pe_poly_base_common"
+
+#if ENABLE_NTL
+
+#define HAS_POLY_NTL 1
+#define HAS_POLY_MUL_NTL 1
+
+namespace pe {
+namespace poly_ntl {
+namespace poly_ntl_internal {
+template <typename T>
+SL void InitNModPoly(NTL::ZZ_pX& p, const T* x, int64 n, int64 mod) {
+  NTL::ZZ tmp(0);
+  p.SetLength(n);
+  if (mod >> 32) {
+    for (int64 i = 0; i < n; ++i) {
+      ZZFromBytes(tmp, reinterpret_cast<const unsigned char*>(&x[i]),
+                  sizeof(T));
+      p[i] = to_ZZ_p(tmp);
+    }
+  } else {
+    for (int64 i = 0; i < n; ++i) {
+      p[i] = x[i];
+    }
+  }
+}
+
+template <typename T>
+SL void CopyNModPoly(NTL::ZZ_pX& p, T* x, int64 n, int64 mod) {
+  const int64 d = deg(p);
+  const int64 m = std::min(d, n - 1);
+  if (mod >> 32) {
+    for (int64 i = 0; i <= m; ++i) {
+      T a;
+      BytesFromZZ(reinterpret_cast<unsigned char*>(&a),
+                  reinterpret_cast<NTL::ZZ&>(p[i]), sizeof(T));
+      x[i] = a;
+    }
+  } else {
+    for (int64 i = 0; i <= m; ++i) {
+      x[i] = static_cast<T>(to_int(reinterpret_cast<NTL::ZZ&>(p[i])));
+    }
+  }
+  for (int64 i = m + 1; i < n; ++i) {
+    x[i] = 0;
+  }
+}
+
+template <typename T>
+SL void InitNModPoly(NTL::zz_pX& p, const T* x, int64 n, long /*mod*/) {
+  p.SetLength(n);
+  for (int64 i = 0; i < n; ++i) {
+    p[i]._zz_p__rep = static_cast<long>(x[i]);
+  }
+}
+
+template <typename T>
+SL void CopyNModPoly(NTL::zz_pX& p, T* x, int64 n, long /*mod*/) {
+  const int64 d = deg(p);
+  const int64 m = std::min(d, n - 1);
+  for (int64 i = 0; i <= m; ++i) {
+    x[i] = p[i]._zz_p__rep;
+  }
+  for (int64 i = m + 1; i < n; ++i) {
+    x[i] = 0;
+  }
+}
+
+template <typename T>
+SL void PolyMulSmallModImpl(const T* X, int64 n, const T* Y, int64 m, T* result,
+                            int64 mod) {
+  NTL::zz_p::init(static_cast<long>(mod));
+
+  NTL::zz_pX x, y, z;
+  InitNModPoly(x, X, n, static_cast<long>(mod));
+  InitNModPoly(y, Y, m, static_cast<long>(mod));
+
+  NTL::mul(z, x, y);
+
+  CopyNModPoly(z, result, n + m - 1, static_cast<long>(mod));
+}
+
+template <typename T>
+SL void PolyMulLargeModImpl(const T* X, int64 n, const T* Y, int64 m, T* result,
+                            int64 mod) {
+  NTL::ZZ tmp(0);
+  ZZFromBytes(tmp, reinterpret_cast<const unsigned char*>(&mod), sizeof(T));
+  NTL::ZZ_p::init(tmp);
+
+  NTL::ZZ_pX x, y, z;
+  InitNModPoly(x, X, n, mod);
+  InitNModPoly(y, Y, m, mod);
+
+  NTL::mul(z, x, y);
+
+  CopyNModPoly(z, result, n + m - 1, mod);
+}
+
+template <typename T>
+SL void PolyMulImpl(const T* X, int64 n, const T* Y, int64 m, T* result,
+                    int64 mod) {
+  if (mod < NTL_SP_BOUND) {
+    PolyMulSmallModImpl(X, n, Y, m, result, mod);
+  } else {
+    PolyMulLargeModImpl(X, n, Y, m, result, mod);
+  }
+}
+}  // namespace poly_ntl_internal
+
+POLY_MUL_IMPL(PolyMulSmallMod, poly_ntl_internal::PolyMulSmallModImpl)
+POLY_MUL_IMPL(PolyMulLargeMod, poly_ntl_internal::PolyMulLargeModImpl)
+POLY_MUL_IMPL(PolyMul, poly_ntl_internal::PolyMulImpl)
+
+namespace poly_ntl_internal {
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyDivAndModSmallModImpl(const T* X, int64 n, const T* Y, int64 m, T* q,
+                              T* r, int64 mod) {
+  if (m > n) {
+    if (r) {
+      std::copy(X, X + n, r);
+      std::fill(r + n, r + m, 0);
+    }
+    if (q) {
+      q[0] = 0;
+    }
+    return;
+  }
+
+  NTL::zz_p::init(static_cast<long>(mod));
+
+  NTL::zz_pX x, y;
+  InitNModPoly(x, X, n, mod);
+  InitNModPoly(y, Y, m, mod);
+
+  if (q && r) {
+    NTL::zz_pX u, v;
+
+    NTL::DivRem(u, v, x, y);
+
+    CopyNModPoly(u, q, n - m + 1, mod);
+    CopyNModPoly(v, r, m, mod);
+  } else if (q) {
+    NTL::zz_pX u;
+
+    NTL::div(u, x, y);
+
+    CopyNModPoly(u, q, n - m + 1, mod);
+  } else if (r) {
+    NTL::zz_pX v;
+
+    NTL::rem(v, x, y);
+    CopyNModPoly(v, r, m, mod);
+  }
+}
+
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyDivAndModLargeModImpl(const T* X, int64 n, const T* Y, int64 m, T* q,
+                              T* r, int64 mod) {
+  if (m > n) {
+    if (r) {
+      std::copy(X, X + n, r);
+      std::fill(r + n, r + m, 0);
+    }
+    if (q) {
+      q[0] = 0;
+    }
+    return;
+  }
+
+  NTL::ZZ tmp(0);
+  ZZFromBytes(tmp, reinterpret_cast<const unsigned char*>(&mod), sizeof(T));
+  NTL::ZZ_p::init(tmp);
+
+  NTL::ZZ_pX x, y;
+  InitNModPoly(x, X, n, mod);
+  InitNModPoly(y, Y, m, mod);
+
+  if (q && r) {
+    NTL::ZZ_pX u, v;
+
+    NTL::DivRem(u, v, x, y);
+
+    CopyNModPoly(u, q, n - m + 1, mod);
+    CopyNModPoly(v, r, m, mod);
+  } else if (q) {
+    NTL::ZZ_pX u;
+
+    NTL::div(u, x, y);
+
+    CopyNModPoly(u, q, n - m + 1, mod);
+  } else if (r) {
+    NTL::ZZ_pX v;
+
+    NTL::rem(v, x, y);
+    CopyNModPoly(v, r, m, mod);
+  }
+}
+
+template <typename T>
+SL REQUIRES((is_native_integer<T>::value)) RETURN(void)
+    PolyDivAndModImpl(const T* X, int64 n, const T* Y, int64 m, T* q, T* r,
+                      int64 mod) {
+  if (mod < NTL_SP_BOUND) {
+    PolyDivAndModSmallModImpl<T>(X, n, Y, m, q, r, mod);
+  } else {
+    PolyDivAndModLargeModImpl<T>(X, n, Y, m, q, r, mod);
+  }
+}
+}  // namespace poly_ntl_internal
+
+POLY_DIV_AND_MOD_IMPL(PolyDivAndModSmallMod,
+                      poly_ntl_internal::PolyDivAndModSmallModImpl)
+POLY_DIV_IMPL(PolyDivSmallMod, poly_ntl::PolyDivAndModSmallMod)
+POLY_MOD_IMPL(PolyModSmallMod, poly_ntl::PolyDivAndModSmallMod)
+
+POLY_DIV_AND_MOD_IMPL(PolyDivAndModLargeMod,
+                      poly_ntl_internal::PolyDivAndModLargeModImpl)
+POLY_DIV_IMPL(PolyDivLargeMod, poly_ntl::PolyDivAndModLargeMod)
+POLY_MOD_IMPL(PolyModLargeMod, poly_ntl::PolyDivAndModLargeMod)
+
+POLY_DIV_AND_MOD_IMPL(PolyDivAndMod, poly_ntl_internal::PolyDivAndModImpl)
+POLY_DIV_IMPL(PolyDiv, poly_ntl::PolyDivAndMod)
+POLY_MOD_IMPL(PolyMod, poly_ntl::PolyDivAndMod)
+}  // namespace poly_ntl
+}  // namespace pe
+#else
+#define HAS_POLY_NTL 0
+#define HAS_POLY_MUL_NTL 0
+#endif
+
+#endif

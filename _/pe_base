@@ -1,0 +1,391 @@
+#ifndef PE_BASE_
+#define PE_BASE_
+
+#include "pe_internal"
+
+#include <cstdint>
+
+#if defined(_LIBCPP_VERSION)
+// http://llvm.org/svn/llvm-project/libcxx/trunk/
+#define CPP_LIBCPP
+#elif defined(__GLIBCXX__)
+#define CPP_GLIBCXX
+#endif
+
+// The glibcpp implementation has a bug if the compiler is clang with c++17. It
+// is expected to be fixed in gcc 9.3, see
+// https://stackoverflow.com/questions/57963460/clang-refuses-to-compile-libstdcs-filesystem-header
+// __GLIBCXX__ = 20200312 for gcc 9.3, see
+// https://gcc.gnu.org/releases.html
+#if defined(CPP_GLIBCXX) && \
+    (!defined(COMPILER_CLANG) || __GLIBCXX__ >= 20200312)
+
+#include <bits/stdc++.h>
+
+#else
+
+#include <cassert>
+#include <ccomplex>
+#include <cctype>
+#include <cerrno>
+#include <cfenv>
+#include <cfloat>
+#include <cinttypes>
+#include <ciso646>
+#include <climits>
+#include <clocale>
+#include <cmath>
+#include <csetjmp>
+#include <csignal>
+
+#if !defined(CPP_LIBCPP)
+#include <cstdalign>
+#endif
+
+#include <cstdarg>
+#include <cstdbool>
+#include <cstddef>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <ctgmath>
+#include <ctime>
+// #include <cuchar>
+#include <cwchar>
+#include <cwctype>
+
+#include <any>
+#include <algorithm>
+#include <bitset>
+#include <deque>
+#include <functional>
+#include <iomanip>
+#include <iostream>
+#include <iterator>
+#include <list>
+#include <map>
+#include <memory>
+#include <numeric>
+#include <optional>
+#include <queue>
+#include <set>
+#include <sstream>
+#include <stack>
+#include <string>
+#include <string_view>
+#include <typeinfo>
+#include <utility>
+#include <vector>
+#include <variant>
+
+#include <array>
+#include <chrono>
+#include <forward_list>
+#include <random>
+#include <ratio>
+#include <tuple>
+#include <unordered_map>
+#include <unordered_set>
+
+#include <atomic>
+// #include <codecvt>
+#include <complex>
+#include <condition_variable>
+#include <exception>
+#include <fstream>
+#include <future>
+#include <initializer_list>
+#include <ios>
+#include <iosfwd>
+#include <istream>
+#include <limits>
+#include <locale>
+#include <mutex>
+#include <new>
+#include <ostream>
+#include <regex>
+#include <stdexcept>
+#include <streambuf>
+#include <system_error>
+#include <thread>
+#include <type_traits>
+#endif
+
+// using namespace std;
+
+// pe macros
+#define all_impl(x) (x).begin(), (x).end()
+#define all(x) (x).begin(), (x).end()
+#define pb push_back
+#define mp make_pair
+#define sz(x) (static_cast<int64>((x).size()))
+#ifdef rep
+#undef rep
+#endif
+#define rep(i, s, e) for (int i = (s); i < (e); ++i)
+
+#define foreach(itr, c) for (auto& itr : c)
+
+#define SL static inline
+
+#define dbg(x) std::cerr << (#x) << " = " << (x) << std::endl
+
+// Gets the argument count of a macro.
+// https://stackoverflow.com/questions/2124339/c-preprocessor-va-args-number-of-arguments
+// Example usage:
+// #define FOO_IMPL_1(I, ...) ...
+// #define FOO_IMPL_2(I, ...) ...
+// #define FOO_IMPL(n, ...) PE_CONCAT(FOO_IMPL_, n)(__VA_ARGS__)
+// #define FOO(...) FOO_IMPL(PE_NARG(__VA_ARGS__), __VA_ARGS__)
+#ifdef COMPILER_CLANG
+#define PE_NARG(...) PE_NARG_(0, ##__VA_ARGS__, PE_RSEQ_N())
+#else
+#define PE_NARG(...) PE_NARG_(__VA_OPT__(0, )##__VA_ARGS__, PE_RSEQ_N())
+#endif
+#define PE_NARG_(...) PE_ARG_N(__VA_ARGS__)
+#define PE_ARG_N(_0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, \
+                 _14, _15, _16, _17, _18, _19, _20, _21, _22, _23, _24, _25, \
+                 _26, _27, _28, _29, _30, _31, _32, _33, _34, _35, _36, _37, \
+                 _38, _39, _40, _41, _42, _43, _44, _45, _46, _47, _48, _49, \
+                 _50, _51, _52, _53, _54, _55, _56, _57, _58, _59, _60, _61, \
+                 _62, _63, _64, N, ...)                                      \
+  N
+#define PE_RSEQ_N()                                                           \
+  64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49, 48, 47, 46, \
+      45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33, 32, 31, 30, 29, 28, \
+      27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, \
+      9, 8, 7, 6, 5, 4, 3, 2, 1, 0
+
+// Concats two symbols.
+#define PE_CONCAT_IMPL(x, y) x##y
+#define PE_CONCAT(x, y) PE_CONCAT_IMPL(x, y)
+
+// Converts a symbol to string.
+#define PE_STR_IMPL(x) #x
+#define PE_STR(x) PE_STR_IMPL(x)
+
+#if ENABLE_ASSERT
+#define PE_ASSERT(x) (void)assert((x))
+#else
+#define PE_ASSERT(x)
+#endif
+
+// For a known function <name>(IT) -> OT, this macro
+// 1. Defines a map with key type = IT and value type = TO to memorize the
+// values.
+// 2. Defines a function named <name>_c which can utilize the map defined in 1
+// as cache to retrieve values.
+// 3. Defines a function named <name>_map to get the map defined in 1.
+#define PE_MEM(IT, OT, name)                        \
+  std::map<IT, OT> PE_CONCAT(name, __LINE__);       \
+                                                    \
+  SL OT PE_CONCAT(name, _c)(IT x) {                 \
+    auto where = PE_CONCAT(name, __LINE__).find(x); \
+    if (where != PE_CONCAT(name, __LINE__).end()) { \
+      return where->second;                         \
+    }                                               \
+    return PE_CONCAT(name, __LINE__)[x] = name(x);  \
+  }                                                 \
+                                                    \
+  SL std::map<IT, OT>& PE_CONCAT(name, _map)() {    \
+    return PE_CONCAT(name, __LINE__);               \
+  }
+
+#if ENABLE_OPENMP
+SL int tid(void) { return omp_get_thread_num(); }
+#endif
+
+// namespace rules
+// 1. A specialized version of std template will be added to std.
+//    e.g. numeric_limits for int128.
+// 2. A std entity which is not available in old std will be added to std.
+//    e.g. remove_cvref is not available before c++17.
+// 3. The functions that operate on a type are added to the namespace of that
+//    type itself.
+//    e.g. int128, __float128, mpz_class are in global namespace.
+//    e.g. BigInteger, MpInteger are in namespace pe.
+// 4. In addition to 3, if these functions are not in namespace pe and they are
+//    not operators, add them to pe. It's always possible to use "pe::Function"
+//    to call them. However, operators are not added because "pe::operator
+//    <operator> ()" is not often used.
+//    e.g. IsEven for mpz_class is defined in global namespace and added to pe.
+//    e.g. operator % on mpz_class is defined in global namespacee and NOT added
+//    to pe.
+// 5. operator "" _suffix is always added to global namespace.
+//    e.g. operator "" x where x is one of {_i128, _u128, _bi, _mpi, _bn}.
+
+namespace pe {
+using int64 = std::int64_t;
+using uint64 = std::uint64_t;
+using int32 = std::int32_t;
+using uint32 = std::uint32_t;
+
+using vi = std::vector<int>;
+using mii = std::map<int, int>;
+using si = std::set<int>;
+
+// pe will add more overloaded version for the following functions.
+using std::abs;
+using std::ceil;
+using std::fabs;
+using std::floor;
+using std::to_string;
+using std::trunc;
+
+// About numbers
+
+// Integer limits check
+static_assert(sizeof(int) >= 4, "sizeof(int) >= 4");
+
+// Square overflow integers
+// x * x > 2^63 - 1 for x > PE_SOI63
+static const int64 PE_SOI63 = 3037000499LL;
+
+// x * x > 2^64 - 1 for x > PE_SOI64
+static const int64 PE_SOI64 = 4294967295LL;
+
+// Util functions
+
+template <typename T>
+SL void cmax(T& a, const T& b) {
+  if (b > a) a = b;
+}
+
+template <typename T>
+SL void cmin(T& a, const T& b) {
+  if (b < a) a = b;
+}
+
+template <typename T>
+SL T sq(T x) {
+  return x * x;
+}
+
+template <typename T>
+SL void InplaceUniqueVector(std::vector<T>& v) {
+  if (v.size() > 1) {
+    std::sort(v.begin(), v.end());
+    v.resize(unique(v.begin(), v.end()) - v.begin());
+  }
+}
+
+template <typename T>
+SL std::vector<T> UniqueVector(std::vector<T> v) {
+  if (v.size() > 1) {
+    std::sort(v.begin(), v.end());
+    v.resize(unique(v.begin(), v.end()) - v.begin());
+  }
+  return v;
+}
+
+template <typename T>
+std::ostream& PPrintVec(std::ostream& o, const std::vector<T>& v) {
+  const auto n = static_cast<int64>(v.size());
+  if (n == 0) {
+    return o;
+  }
+
+  if (n == 1) {
+    return o << v[0];
+  }
+
+  o << "{" << v[0];
+  for (int64 i = 1; i < n; ++i) {
+    o << ", " << v[i];
+  }
+  return o << "}";
+}
+}  // namespace pe
+
+// The following names are visible out of pe.
+using int64 = pe::int64;
+using uint64 = pe::uint64;
+using int32 = pe::int32;
+using uint32 = pe::uint32;
+
+using vi = pe::vi;
+using mii = pe::mii;
+using si = pe::si;
+
+namespace std {
+template <typename T1, typename T2>
+SL std::ostream& operator<<(std::ostream& o, const std::pair<T1, T2>& v);
+
+template <typename T>
+SL std::ostream& operator<<(std::ostream& o, const std::vector<T>& v) {
+  const auto size = static_cast<int64>(v.size());
+  int64 id = 0;
+  o << "{";
+  for (const auto& iter : v) {
+    o << iter;
+    if (++id < size) {
+      o << ", ";
+    }
+  }
+  return o << "}";
+}
+
+template <typename T>
+SL std::ostream& operator<<(std::ostream& o, const std::set<T>& v) {
+  const auto size = static_cast<int64>(v.size());
+  int64 id = 0;
+  o << "{";
+  for (const auto& iter : v) {
+    o << iter;
+    if (++id < size) {
+      o << ", ";
+    }
+  }
+  return o << "}";
+}
+
+template <typename T>
+SL std::ostream& operator<<(std::ostream& o, const std::unordered_set<T>& v) {
+  const auto size = static_cast<int64>(v.size());
+  int64 id = 0;
+  o << "{";
+  for (const auto& iter : v) {
+    o << iter;
+    if (++id < size) {
+      o << ", ";
+    }
+  }
+  return o << "}";
+}
+
+template <typename T1, typename T2>
+SL std::ostream& operator<<(std::ostream& o, const std::map<T1, T2>& v) {
+  const int size = static_cast<int64>(v.size());
+  int64 id = 0;
+  o << "{";
+  for (const auto& iter : v) {
+    o << iter.first << ": " << iter.second;
+    if (++id < size) {
+      o << ", ";
+    }
+  }
+  return o << "}";
+}
+
+template <typename T1, typename T2>
+SL std::ostream& operator<<(std::ostream& o,
+                            const std::unordered_map<T1, T2>& v) {
+  const auto size = static_cast<int64>(v.size());
+  int64 id = 0;
+  o << "{";
+  for (const auto& iter : v) {
+    o << iter.first << ": " << iter.second;
+    if (++id < size) {
+      o << ", ";
+    }
+  }
+  return o << "}";
+}
+
+template <typename T1, typename T2>
+SL std::ostream& operator<<(std::ostream& o, const std::pair<T1, T2>& v) {
+  return o << "(" << v.first << ", " << v.second << ")";
+}
+}  // namespace std
+
+#endif

@@ -1,0 +1,34 @@
+<ul class="breadcrumb">
+  <li><a href="/">問題一覧</a> <span class="divider">/</span></li>
+  <li class="active"><%= @dir %></li>
+</ul>
+<h1><%= @dir %></h1>
+<table class="table table-bordered table-striped table-hover">
+  <thead>
+    <tr>
+      <th>File</th>
+      <th>Recent score</th>
+      <th>Console</th>
+    </tr>
+  </thead>
+  <tbody>
+  <% @scripts.each do |script| %>
+      <tr>
+        <td><%= link_to script.file, "/#{script.id}" %></td>
+        <td style="text-align:right;"><%= '%0.5f' % script.recent %></td>
+        <td>
+          <%= link_to '/' + script.id.to_s, :class => 'btn btn-mini btn-primary' do %>
+            <i class="icon-file"></i> 詳細を見る
+          <% end %>
+          <%= link_to "/run/#{script.id}/#{@dir}" , :class => 'btn btn-mini btn-danger' do %>
+              <i class="icon-file"></i> 再度実行する
+          <% end %>
+        </td>
+      </tr>
+  <% end %>
+  </tbody>
+</table>
+
+<div class="fb-comments" data-href="http://yapc.pjeuler.com/dir/yapc2012" data-num-posts="2" data-width="940" data-colorscheme="dark"></div>
+
+<%= link_to 'Back', '/' %>

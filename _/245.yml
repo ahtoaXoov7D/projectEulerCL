@@ -1,0 +1,15 @@
+---
+:id: 245
+:name: Coresilience
+:url: https://projecteuler.net/problem=245
+:content: "We shall call a fraction that cannot be cancelled down a resilient fraction.
+  \ \n Furthermore we shall define the resilience of a denominator, <var>R</var>(<var>d</var>),
+  to be the ratio of its proper fractions that are resilient; for example, <var>R</var>(12)
+  = <sup>4</sup>⁄<sub>11</sub>.\n\n| The resilience of a number <var>d</var> \\> 1
+  is then | \nφ(<var>d</var>)  \n<var>d</var> − 1\n | , where φ is Euler's totient
+  function. |\n\n| We further define the **coresilience** of a number <var>n</var>
+  \\> 1 as <var>C</var>(<var>n</var>) | =&nbsp; | \n<var>n</var> − φ(<var>n</var>)
+  \ \n<var>n</var> − 1\n | . |\n\n| The coresilience of a prime <var>p</var> is <var>C</var>(<var>p</var>)
+  | =&nbsp; | \n1  \n<var>p</var> − 1\n | . |\n\nFind the sum of all **composite**
+  integers 1 \\< <var>n</var> ≤ 2×10<sup>11</sup>, for which <var>C</var>(<var>n</var>)
+  is a <dfn title=\"A fraction with numerator 1\">unit fraction</dfn>.\n\n"
