@@ -1,6 +1,6 @@
 const skriptArgs = process.argv.slice(2);
 
-let skriptprocess=skriptArgs.toString().split("").toString();
+let skriptprocess=skriptArgs.toString().split("");
 
 function sum_of_all_multiples_of_x(x, t_max) {
     var i = 0; var ret = 0; 
