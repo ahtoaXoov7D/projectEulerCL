@@ -1,5 +1,0 @@
-package euler
-
-object euler {
-
-}
